@@ -157,7 +157,6 @@ option(MICRO_BENCHMARK "Enable micro benchmark" OFF)
 option(MEGA_BENCHMARK "Enable MEGA benchmark" OFF)
 option(MEGA_BENCHMARK_MICRO "Enable MEGA benchmark micro" OFF)
 option(TRACKING_LATENCY "Enable latency tracking" OFF)
-set(SHARDS 1 CACHE STRING "Number of shards")
 option(FAIL_NEW_VERSION "Enable fail new version" ON)
 option(SIMULATE_ONE_SHARD_PER_THREAD "Simulate one shard per thread" OFF)
 option(TRACKING_ROLLBACK "Enable rollback tracking" OFF)
@@ -291,7 +290,6 @@ if(TRACKING_ROLLBACK)
   list(APPEND CXXFLAGS -DTRACKING_ROLLBACK)
 endif()
 list(APPEND CXXFLAGS
-  -DSHARDS=${SHARDS}
   -include ${W}/masstree/config.h
   -DREAD_MY_WRITES=${STO_RMW}
   -DHASHTABLE=${HASHTABLE}

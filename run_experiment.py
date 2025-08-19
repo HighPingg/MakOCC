@@ -59,12 +59,12 @@ class ExperimentRunner:
         # Clean CMake cache
         self.run_command("mkdir -p build", "mkdir build directory")
         self.run_command("cd build", "Change to build directory")
-        self.run_command("rm -rf CMakeFiles cmake_install.cmake CMakeCache.txt", "Clean CMake cache")
+        self.run_command("rm -rf *", "Clean CMake cache")
         self.add_section_break()
         
         # Configure with CMake
         cmake_cmd = (f"cmake .. -DPAXOS_LIB_ENABLED={is_replicated} "
-                    f"-DMICRO_BENCHMARK={is_micro} -DSHARDS={shards}")
+                    f"-DMICRO_BENCHMARK={is_micro}")
         self.run_command(cmake_cmd, "Configure with CMake")
         self.add_section_break()
         

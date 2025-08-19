@@ -207,11 +207,12 @@ int main(int argc, char **argv) {
         size_t par_id = i;
         counters[par_id] = 0;
 
-        register_for_leader_par_id_return([&lCnt](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<std::vector<uint32_t>, int, int, int, const char *>> & un_replay_logs_) {
-            vector<uint32_t> ret(1);
-            ret[0]=0;
+        register_for_leader_par_id_return([&lCnt](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<int, int, int, int, const char *>> & un_replay_logs_) {
+            int status = 0;
+            uint32_t timestamp = 0;
+            
             if (len<10&&len>0) {
-                ret[0]=5;
+                status = 5;
             }
             if (len==0)
                 end_received_leader++;
@@ -220,25 +221,29 @@ int main(int argc, char **argv) {
                 long long log_id = std::stoll(std::string(log,0,16));
                 long long st = std::stoll(std::string(log,16,16));
                 long long et = getCurrentTimeMillis();
+                timestamp = static_cast<uint32_t>(et);  // Use current time as timestamp
                 std::cout << "register_for_leader_par_id_return, par_id: " << par_id << ", epoch:" << get_epoch() <<  ", slot_id:" << slot_id
                             << ", no-ops:" << (len<10&&len>0) << ", len: " << len
                             << ", time spent to commit log: " << (et - st) << ", st: " << st << ", et: " << et << ", log-id: " << log_id << "," << std::endl;
             } else {
+                timestamp = static_cast<uint32_t>(getCurrentTimeMillis());
                 std::cout << "register_for_leader_par_id_return, par_id: " << par_id << ", epoch:" << get_epoch() <<  ", slot_id:" << slot_id << ", no-ops:" << (len<10&&len>0) << ", len: " << len << std::endl;
             }
 
             lCnt++;
-            return ret;
+            // Return timestamp * 10 + status (for safety check compatibility)
+            return timestamp * 10 + status;
         }, par_id);
 
-        register_for_follower_par_id_return([&fCnt](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<std::vector<uint32_t>, int, int, int, const char *>> & un_replay_logs_) {
-            vector<uint32_t> ret(1);
-            ret[0]=0;
+        register_for_follower_par_id_return([&fCnt](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<int, int, int, int, const char *>> & un_replay_logs_) {
+            int status = 0;
+            uint32_t timestamp = static_cast<uint32_t>(getCurrentTimeMillis());
+            
             if (len == 0) {
                 end_received++;
             }
             if (len<10&&len>0) {
-                ret[0]=5;
+                status = 5;
             }
 
             fCnt++;
@@ -247,7 +252,8 @@ int main(int argc, char **argv) {
             std::cout << "register_for_follower_par_id_return, par_id: " << par_id << ", epoch:" << get_epoch() << ", slot_id:" << slot_id << ", no-ops:" << (len<10&&len>0) << ", len: " << len << std::endl;
 
             std::this_thread::sleep_for(std::chrono::milliseconds(rand() % 5));
-            return ret;
+            // Return timestamp * 10 + status (for safety check compatibility)
+            return timestamp * 10 + status;
         }, par_id);
     }
 

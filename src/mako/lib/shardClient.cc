@@ -361,7 +361,7 @@ namespace srolis
         return promise.GetReply();
     }
 
-    int ShardClient::remoteValidate(std::vector<uint32_t> &watermark_v) {
+    int ShardClient::remoteValidate(uint32_t &watermark) {
         int shards_to_send_bits = TThread::writeset_shard_bits;
         if (!shards_to_send_bits) return ErrorCode::SUCCESS;
         calculate_num_response_waiting(shards_to_send_bits);
@@ -374,13 +374,19 @@ namespace srolis
                                 bind(&ShardClient::SendToAllIntCallBack, this, placeholders::_1),
                                 bind(&ShardClient::SendToAllGiveUpTimeout, this),
                                 BASIC_TIMEOUT);
-        for (int i=0; i<(int)int_received.size(); i++)
-            watermark_v[i] = int_received[i];
+        // Single timestamp system: use maximum watermark from all shards
+        watermark = 0;
+        for (int i=0; i<(int)int_received.size(); i++) {
+            if (int_received[i] > watermark) {
+                watermark = int_received[i];
+            }
+        }
         return is_all_response_ok();
     }
 
-    int ShardClient::remoteInstall(std::vector<uint32_t> vectorT) {
-        char *cc=encode_vec_uint32(vectorT, config.nshards);
+    int ShardClient::remoteInstall(uint32_t timestamp) {
+        // Single timestamp encoding - no vector needed
+        char *cc = encode_single_timestamp(timestamp);
         int shards_to_send_bits = TThread::writeset_shard_bits;
         if (!shards_to_send_bits) return ErrorCode::SUCCESS;
         calculate_num_response_waiting(shards_to_send_bits);
@@ -398,7 +404,7 @@ namespace srolis
     }
 
 
-    int ShardClient::warmupRequest(uint32_t req_val, uint8_t centerId, std::vector<uint32_t> &ret_values, uint64_t set_bits) {
+    int ShardClient::warmupRequest(uint32_t req_val, uint8_t centerId, uint32_t &ret_value, uint64_t set_bits) {
         calculate_num_response_waiting_no_skip(set_bits);
         uint16_t server_id = req_val; // we don't forward to a helper queue;
 
@@ -411,12 +417,17 @@ namespace srolis
                             bind(&ShardClient::SendToAllIntCallBack, this, placeholders::_1),
                             bind(&ShardClient::SendToAllGiveUpTimeout, this),
                             BASIC_TIMEOUT);
-        for (int i=0; i<(int)int_received.size(); i++)
-            ret_values[i] = int_received[i];
+        // Single timestamp system: use maximum value from all shards
+        ret_value = 0;
+        for (int i=0; i<(int)int_received.size(); i++) {
+            if (int_received[i] > ret_value) {
+                ret_value = int_received[i];
+            }
+        }
         return is_all_response_ok(); 
     }
 
-    int ShardClient::remoteControl(int control, uint32_t value, std::vector<uint32_t> &ret_values, uint64_t set_bits) {
+    int ShardClient::remoteControl(int control, uint32_t value, uint32_t &ret_value, uint64_t set_bits) {
         calculate_num_response_waiting_no_skip(set_bits);
         uint16_t server_id = 0; // to locate which helper_queue
 
@@ -429,12 +440,17 @@ namespace srolis
                             bind(&ShardClient::SendToAllIntCallBack, this, placeholders::_1),
                             bind(&ShardClient::SendToAllGiveUpTimeout, this),
                             BASIC_TIMEOUT);
-        for (int i=0; i<(int)int_received.size(); i++)
-            ret_values[i] = int_received[i];
+        // Single timestamp system: use maximum value from all shards
+        ret_value = 0;
+        for (int i=0; i<(int)int_received.size(); i++) {
+            if (int_received[i] > ret_value) {
+                ret_value = int_received[i];
+            }
+        }
         return is_all_response_ok(); 
     }
 
-    int ShardClient::remoteExchangeWatermark(std::vector<uint32_t> &vectorW, uint64_t set_bits) {
+    int ShardClient::remoteExchangeWatermark(uint32_t &watermark, uint64_t set_bits) {
         calculate_num_response_waiting(set_bits);
         uint16_t server_id = 0; // to locate which helper_queue, does not matter
 
@@ -445,8 +461,13 @@ namespace srolis
                             bind(&ShardClient::SendToAllIntCallBack, this, placeholders::_1),
                             bind(&ShardClient::SendToAllGiveUpTimeout, this),
                             BASIC_TIMEOUT);
-        for (int i=0; i<(int)int_received.size(); i++)
-            vectorW[i] = int_received[i];
+        // Single timestamp system: use maximum watermark from all shards
+        watermark = 0;
+        for (int i=0; i<(int)int_received.size(); i++) {
+            if (int_received[i] > watermark) {
+                watermark = int_received[i];
+            }
+        }
         return is_all_response_ok();
     }
 
@@ -465,7 +486,7 @@ namespace srolis
         return is_all_response_ok();
     }
 
-    int ShardClient::remoteGetTimestamp(std::vector<uint32_t> &vectorT) {
+    int ShardClient::remoteGetTimestamp(uint32_t &timestamp) {
         int shards_to_send_bits = TThread::writeset_shard_bits;
         if (!shards_to_send_bits) return ErrorCode::SUCCESS;
         calculate_num_response_waiting(shards_to_send_bits);
@@ -478,13 +499,19 @@ namespace srolis
                             bind(&ShardClient::SendToAllIntCallBack, this, placeholders::_1),
                             bind(&ShardClient::SendToAllGiveUpTimeout, this),
                             BASIC_TIMEOUT);
-        for (int i=0; i<(int)int_received.size(); i++)
-            vectorT[i] = int_received[i];
+        // Single timestamp system: use maximum timestamp from all shards
+        timestamp = 0;
+        for (int i=0; i<(int)int_received.size(); i++) {
+            if (int_received[i] > timestamp) {
+                timestamp = int_received[i];
+            }
+        }
         return is_all_response_ok();
     }
 
-    int ShardClient::remoteInvokeSerializeUtil(std::vector<uint32_t> vectorT) {
-        char *cc=encode_vec_uint32(vectorT, config.nshards);
+    int ShardClient::remoteInvokeSerializeUtil(uint32_t timestamp) {
+        // Single timestamp encoding - no vector needed
+        char *cc = encode_single_timestamp(timestamp);
         int shards_to_send_bits = TThread::writeset_shard_bits;
         if (!shards_to_send_bits) return ErrorCode::SUCCESS;
         calculate_num_response_waiting(shards_to_send_bits);

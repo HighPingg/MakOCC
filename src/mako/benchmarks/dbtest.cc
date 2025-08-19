@@ -550,7 +550,8 @@ main(int argc, char **argv)
       }
       case 2: {
         // Wait for FVW in the old epoch (w * 10 + epoch); this is very important in our new implementation
-        vector<uint32_t> fvw(nshards);
+        // Single timestamp system: collect all shard watermarks and use maximum
+        uint32_t max_watermark = 0;
         for (int i=0; i<nshards; i++) {
           int clusterRoleLocal = srolis::LOCALHOST_CENTER_INT;
           if (i==0) 
@@ -561,10 +562,11 @@ main(int argc, char **argv)
                                                       config->shard(0, clusterRoleLocal).host.c_str(), 
                                                       config->mports[clusterRoleLocal]);
           std::cout<<"get fvw, " << clusterRoleLocal << ", fvw_"+std::to_string(i)<<":"<<w_i<<std::endl;
-          fvw[i] = std::stoi(w_i);
+          uint32_t watermark = std::stoi(w_i);
+          max_watermark = std::max(max_watermark, watermark);
         }
 
-        sync_util::sync_logger::update_stable_timestamp_vec(get_epoch()-1, fvw);
+        sync_util::sync_logger::update_stable_timestamp(get_epoch()-1, max_watermark);
         sync_util::sync_logger::client_control(1, shardIndex);
 
         // Start transactions in new epoch
@@ -638,12 +640,12 @@ main(int argc, char **argv)
 
   for (int i = 0; i < nthreads; i++) {
     //transport::ShardAddress addr = config->shard(shardIndex, srolis::LEARNER_CENTER);
-    register_for_follower_par_id_return([&,i](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<std::vector<uint32_t>, int, int, int, const char *>> & un_replay_logs_) {
+    register_for_follower_par_id_return([&,i](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<int, int, int, int, const char *>> & un_replay_logs_) {
       //Warning("receive a register_for_follower_par_id_return, par_id:%d, slot_id:%d,len:%d",par_id, slot_id,len);
       // status: 1 => default, 2 => ending of Paxos group, 3 => fail to safety check
       //         4 => replay DONE for this log, 5 => noops
       int status = 1;
-      std::vector<uint32_t> latest_commit_id_v(nshards+1,0);
+      uint32_t timestamp = 0;  // Track timestamp for return value encoding
       abstract_db * db = tpool_mbta.getDBWrapper(par_id)->getDB () ;
       bool noops = false;
 
@@ -653,8 +655,7 @@ main(int argc, char **argv)
           std::cout << "we can start a advancer" << std::endl;
           sync_util::sync_logger::start_advancer();
         }
-        latest_commit_id_v[0] = latest_commit_id_v[0]*10+status;
-        return latest_commit_id_v; 
+        return status; 
       }
 
       // ending of Paxos group
@@ -701,13 +702,15 @@ main(int argc, char **argv)
             sync_util::sync_logger::update_stable_timestamp(get_epoch()-1, sync_util::sync_logger::retrieveShardW()/10);
           }
         }else{
-          get_latest_commit_id ((char *) log, len, nshards).swap(latest_commit_id_v);
-          //ALWAYS_ASSERT(latest_commit_id_v[shardIndex]>=0);
-          //Warning("par_id:%d, slot_id:%d, timestamp:%llu",par_id, slot_id, latest_commit_id_v[shardIndex]);
-          sync_util::sync_logger::local_timestamp_[par_id].store(latest_commit_id_v[shardIndex], memory_order_release) ;
-          auto w = sync_util::sync_logger::retrieveW();
-          // Have to be the vectorized watermark comparison
-          if (sync_util::sync_logger::safety_check(latest_commit_id_v, w)) { // pass safety check
+          CommitInfo commit_info = get_latest_commit_info((char *) log, len);
+          timestamp = commit_info.timestamp;  // Store for return value encoding
+          
+          //ALWAYS_ASSERT(commit_info.timestamp>=0);
+          //Warning("par_id:%d, slot_id:%d, timestamp:%llu",par_id, slot_id, commit_info.timestamp);
+          sync_util::sync_logger::local_timestamp_[par_id].store(commit_info.timestamp, memory_order_release) ;
+          uint32_t w = sync_util::sync_logger::retrieveW();
+          // Single timestamp safety check
+          if (sync_util::sync_logger::safety_check(commit_info.timestamp, w)) { // pass safety check
             treplay_in_same_thread_opt_mbta_v2(par_id, (char*)log, len, db, nshards);
             //Warning("replay par_id:%d,slot_id:%d,un_replay_logs_:%d", par_id, slot_id,un_replay_logs_.size());
             status = 4;
@@ -728,7 +731,12 @@ main(int argc, char **argv)
                                                             config->mports[clusterRole]);
 
             //Warning("We update local_watermark[%d]=%s (others)",i, local_w.c_str());
-            sync_util::sync_logger::vectorized_w_[i].store(std::stoull(local_w), memory_order_release);
+            // In single timestamp system, use max value from all shards
+            uint32_t new_watermark = std::stoull(local_w);
+            uint32_t current = sync_util::sync_logger::single_watermark_.load(memory_order_acquire);
+            if (new_watermark > current) {
+                sync_util::sync_logger::single_watermark_.store(new_watermark, memory_order_release);
+            }
           }
         }
         
@@ -745,7 +753,7 @@ main(int argc, char **argv)
             free((char*)std::get<4>(it));
           } else {
             if (noops){
-              un_replay_logs_.pop() ; // SWH (TODO): should compare each transactions one by one
+              un_replay_logs_.pop() ; // TODOs: should compare each transactions one by one
               Warning("no-ops pop a log, par_id:%d,slot_id:%d", par_id,std::get<1>(it));
               free((char*)std::get<4>(it));
             }else{
@@ -772,19 +780,15 @@ main(int argc, char **argv)
           sync_util::sync_logger::reset();
         }
       }
-      if (status==5) { // for no-ops, there is no timestamp obtained 
-        latest_commit_id_v[0]=0;
-      }
-
-      latest_commit_id_v[0] = latest_commit_id_v[0]*10+status;
-      return latest_commit_id_v;
+      // Return timestamp * 10 + status (for safety check compatibility)
+      return static_cast<int>(timestamp * 10 + status);
     }, 
     i);
 
-    register_for_leader_par_id_return([&,i](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<std::vector<uint32_t>, int, int, int, const char *>> & un_replay_logs_) {
+    register_for_leader_par_id_return([&,i](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<int, int, int, int, const char *>> & un_replay_logs_) {
       //Warning("receive a register_for_leader_par_id_return, par_id:%d, slot_id:%d,len:%d",par_id, slot_id,len);
       int status = 0;
-      std::vector<uint32_t> latest_commit_id_v(nshards+1,0);
+      uint32_t timestamp = 0;  // Track timestamp for return value encoding
       bool noops = false;
 
       if (len==2) { // start a advancer
@@ -793,8 +797,7 @@ main(int argc, char **argv)
           std::cout << "we can start a advancer" << std::endl;
           sync_util::sync_logger::start_advancer();
         }
-        latest_commit_id_v[0] = latest_commit_id_v[0]*10+status;
-        return latest_commit_id_v; 
+        return status; 
       }
 
       if (len==0) {
@@ -830,6 +833,7 @@ main(int argc, char **argv)
                                           config->mports[clusterRole]);
             sync_util::sync_logger::update_stable_timestamp(get_epoch()-1, sync_util::sync_logger::retrieveShardW()/10);
 #if defined(FAIL_NEW_VERSION)
+            // Set this shard's watermark for synchronization
             srolis::NFSSync::set_key("fvw_"+std::to_string(shardIndex), 
                                        std::to_string(local_w).c_str(),
                                        config->shard(0, clusterRole).host.c_str(),
@@ -839,11 +843,13 @@ main(int argc, char **argv)
             sync_util::sync_logger::reset(); 
           }
         }else {
-          get_latest_commit_id ((char *) log, len, nshards).swap(latest_commit_id_v);
+          CommitInfo commit_info = get_latest_commit_info((char *) log, len);
+          timestamp = commit_info.timestamp;  // Store for return value encoding
+          
           uint32_t end_time = srolis::getCurrentTimeMillis();
           //Warning("In register_for_leader_par_id_return, par_id:%d, slot_id:%d, len:%d, st: %llu, et: %llu, latency: %llu",
-          //       par_id, slot_id, len, latest_commit_id_v[nshards], end_time, end_time-latest_commit_id_v[nshards]);
-          sync_util::sync_logger::local_timestamp_[par_id].store(latest_commit_id_v[shardIndex], memory_order_release) ;
+          //       par_id, slot_id, len, commit_info.latency_tracker, end_time, end_time-commit_info.latency_tracker);
+          sync_util::sync_logger::local_timestamp_[par_id].store(commit_info.timestamp, memory_order_release) ;
   
   #if defined(TRACKING_LATENCY)
           if (par_id==4){
@@ -855,11 +861,8 @@ main(int argc, char **argv)
         }
       }
 
-      if (status==5) { // for no-ops, there is no timestamp obtained 
-        latest_commit_id_v[0]=0;
-      }
-      latest_commit_id_v[0] = latest_commit_id_v[0]*10+status;
-      return latest_commit_id_v;
+      // Return timestamp * 10 + status (for safety check compatibility)
+      return static_cast<int>(timestamp * 10 + status);
     },
     i);
   }

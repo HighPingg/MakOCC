@@ -202,7 +202,6 @@ g++ -std=c++17 \
     -I./third-party/erpc/third_party/asio/include \
     -I. \
     -DCONFIG_H=\"./src/mako/config/config-perf.h\" \
-    -DSHARDS=1 \
     -DERPC_FAKE=true \
     -include ./src/mako/masstree/config.h \
     -o helloworld \

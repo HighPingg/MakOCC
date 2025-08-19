@@ -7,6 +7,9 @@
 #include "lib/promise.h"
 #include "lib/common.h"
 
+// TODO: I have to draw a figure and write a document on how it works; you don't need to do anything
+
+// TODOs: go through all those functions, some of them use vector accordingly
 namespace srolis
 {
     using namespace std;
@@ -17,17 +20,18 @@ namespace srolis
         ShardClient(std::string file, string cluster, int shardIndex, int par_id, int workload_type);
         int remoteGet(int dummy_table_id, std::string key, std::string &value);
         int remoteScan(int dummy_table_id, std::string start_key, std::string end_key, std::string &value);
-        int remoteGetTimestamp(std::vector<uint32_t> &vectorT);
-        int remoteExchangeWatermark(std::vector<uint32_t> &vectorW, uint64_t set_bits);
-        int remoteControl(int control, uint32_t value, std::vector<uint32_t> &ret_values, uint64_t set_bits);
+        // Single timestamp interfaces
+        int remoteGetTimestamp(uint32_t &timestamp);
+        int remoteExchangeWatermark(uint32_t &watermark, uint64_t set_bits);
+        int remoteControl(int control, uint32_t value, uint32_t &ret_value, uint64_t set_bits);
         int remoteAbort();
         int remoteLock(int dummy_table_id, std::string key, std::string &value);
         int remoteBatchLock(vector<int> &dummy_table_id_batch, vector<string> &key_batch, vector<string> &value_batch);
-        int remoteValidate(std::vector<uint32_t> &watermark_v);
-        int remoteInstall(std::vector<uint32_t> vectorT);
+        int remoteValidate(uint32_t &watermark);
+        int remoteInstall(uint32_t timestamp);
         int remoteUnLock();
-        int warmupRequest(uint32_t req_val, uint8_t centerId, std::vector<uint32_t> &ret_values, uint64_t set_bits);
-        int remoteInvokeSerializeUtil(std::vector<uint32_t> vectorT);
+        int warmupRequest(uint32_t req_val, uint8_t centerId, uint32_t &ret_value, uint64_t set_bits);
+        int remoteInvokeSerializeUtil(uint32_t timestamp);
         void statistics();
         void stop();
         void setBreakTimeout(bool);

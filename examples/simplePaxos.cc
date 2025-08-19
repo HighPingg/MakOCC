@@ -101,27 +101,34 @@ int main(int argc, char **argv) {
     for (size_t i = 0; i < num_workers; i++) {
         counters[i] = 0;
 
-        register_for_leader_par_id_return([&lCnt](const char*& log, int len, int par_id, int slot_id, auto& un_replay_logs_) {
-            vector<uint32_t> ret(1, (len < 10 && len > 0) ? 5 : 0);
+        register_for_leader_par_id_return([&lCnt](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<int, int, int, int, const char *>>& un_replay_logs_) {
+            int status = (len < 10 && len > 0) ? 5 : 0;
+            uint32_t timestamp = 0;  // Simple timestamp for this example
+            
             if (len == 0) end_received_leader++;
 
             if (len > 32) {
                 long long log_id = stoll(string(log, 0, 16));
                 long long st = stoll(string(log, 16, 16));
                 long long et = getCurrentTimeMillis();
+                timestamp = static_cast<uint32_t>(et);  // Use current time as timestamp
                 // cout << "register_for_leader_par_id_return, par_id: " << par_id << ", epoch:" << get_epoch()
                 //      << ", slot_id:" << slot_id << ", no-ops:" << (len < 10 && len > 0) << ", len: " << len
                 //      << ", time spent to commit log: " << (et - st) << "ms, log-id: " << log_id << endl;
             } else {
+                timestamp = static_cast<uint32_t>(getCurrentTimeMillis());
                 // cout << "register_for_leader_par_id_return, par_id: " << par_id << ", epoch:" << get_epoch()
                 //      << ", slot_id:" << slot_id << ", no-ops:" << (len < 10 && len > 0) << ", len: " << len << endl;
             }
             lCnt++;
-            return ret;
+            // Return timestamp * 10 + status (for safety check compatibility)
+            return timestamp * 10 + status;
         }, i);
 
-        register_for_follower_par_id_return([&fCnt](const char*& log, int len, int par_id, int slot_id, auto& un_replay_logs_) {
-            vector<uint32_t> ret(1, (len < 10 && len > 0) ? 5 : 0);
+        register_for_follower_par_id_return([&fCnt](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<int, int, int, int, const char *>>& un_replay_logs_) {
+            int status = (len < 10 && len > 0) ? 5 : 0;
+            uint32_t timestamp = static_cast<uint32_t>(getCurrentTimeMillis());  // Use current time as timestamp
+            
             if (len == 0) end_received++;
 
             fCnt++;
@@ -130,7 +137,8 @@ int main(int argc, char **argv) {
             // cout << "register_for_follower_par_id_return, par_id: " << par_id << ", epoch:" << get_epoch()
             //      << ", slot_id:" << slot_id << ", no-ops:" << (len < 10 && len > 0) << ", len: " << len << endl;
 
-            return ret;
+            // Return timestamp * 10 + status (for safety check compatibility)
+            return timestamp * 10 + status;
         }, i);
     }
 

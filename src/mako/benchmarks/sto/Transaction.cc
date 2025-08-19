@@ -5,6 +5,10 @@
 #include "benchmarks/sto/sync_util.hh"
 #include "lib/common.h"
 
+#ifndef MAX
+#define MAX(a,b) ((a)>(b)?(a):(b))
+#endif
+
 std::function<int()> callback_ = nullptr;
 void register_sync_util(std::function<int()> cb) {
     callback_ = cb;
@@ -287,14 +291,14 @@ int Transaction::shard_validate() {
     return 0;
 }
 
-void Transaction::shard_serialize_util(std::vector<uint32_t> vectorT) {
+void Transaction::shard_serialize_util(uint32_t timestamp) {
 #if defined(PAXOS_LIB_ENABLED)
     #if defined(SIMPLE_WORKLOAD)
         int small_batch_num=2;
     #else
         int small_batch_num=100;
     #endif
-    serialize_util(1 /* anything > 0 */, true, MAX_ARRAY_SIZE_IN_BYTES_SMALL, small_batch_num, vectorT);
+    serialize_util(1 /* anything > 0 */, true, MAX_ARRAY_SIZE_IN_BYTES_SMALL, small_batch_num, timestamp);
 #endif
 }
 
@@ -308,14 +312,18 @@ uint8_t Transaction::get_current_term() const {
     return current_term_;
 }
 
-void Transaction::shard_install(std::vector<uint32_t> vectorT) {
+void Transaction::shard_install(uint32_t timestamp) {
     assert(TThread::id() == threadid_);
 
-    for (int i=0; i<SHARDS; i++) {
-        TThread::txn->timestampsReadSet[i] = vectorT[i];
-    }
-    tid_unique_ = vectorT[TThread::get_shard_index()];
+    // Update max timestamp from readset
+    TThread::txn->maxTimestampReadSet = MAX(TThread::txn->maxTimestampReadSet, timestamp);
+    tid_unique_ = timestamp;
 
+    // Update local_id to catch up with single timestamp
+    int delta = tid_unique_ - sync_util::sync_logger::local_replica_id;
+    if (delta > 0) {
+        __sync_fetch_and_add(&sync_util::sync_logger::local_replica_id, delta);
+    }
 
     TransItem* it = nullptr;
     if (tset_size_ == 0) return;
@@ -382,7 +390,8 @@ bool Transaction::try_commit(bool no_paxos) {
 
     unsigned writeset[tset_size_];
     unsigned nwriteset = 0;
-    std::vector<uint32_t> watermarkTimestamp(TThread::get_nshards(),0);
+    // Single watermark timestamp instead of vector
+    uint32_t watermarkTimestamp = 0;
     writeset[0] = tset_size_;
 
     //phase1
@@ -478,15 +487,16 @@ bool Transaction::try_commit(bool no_paxos) {
 #endif
 
     if (!no_paxos){
-        updateVectorizedTimestamp(vectorTimestamp); // actual timestamp, not *10
-        // merge the vs from the read set;
-        for (int i=0;i<TThread::get_nshards();i++) {
-            vectorTimestamp[i] = vectorTimestamp[i]>timestampsReadSet[i]?vectorTimestamp[i]:timestampsReadSet[i];
+        // Update single timestamp system
+        updateSingleTimestamp(); // Updates tid_unique_ internally
+        // Merge with max timestamp from read set
+        if (maxTimestampReadSet > tid_unique_) {
+            tid_unique_ = maxTimestampReadSet;
         }
 
 #if defined(TRACKING_ROLLBACK)
         if (get_current_term()==0) {
-            rollbacks_tracker[srolis::getCurrentTimeMillis()].push_back(vectorTimestamp[0]);
+            rollbacks_tracker[srolis::getCurrentTimeMillis()].push_back(tid_unique_);
         }
 #endif
     }
@@ -506,11 +516,11 @@ bool Transaction::try_commit(bool no_paxos) {
     }
 
     if (TThread::readset_shard_bits > 0) {
+        // Single timestamp system: pass and receive single watermark
         int ret=TThread::sclient->remoteValidate(watermarkTimestamp);
-        for (int i=0;i<TThread::get_nshards();i++) {
-            if(watermarkTimestamp[i]>0) {
-                sync_util::sync_logger::vectorized_w_[i]=watermarkTimestamp[i];
-            }
+        if(watermarkTimestamp > 0) {
+            // Update single watermark
+            sync_util::sync_logger::single_watermark_.store(watermarkTimestamp, memory_order_release);
         }
         if (ret > 0) {
             goto abort;
@@ -530,6 +540,12 @@ bool Transaction::try_commit(bool no_paxos) {
     if (nwriteset) {
         auto writeset_end = writeset + nwriteset;
 
+        // Update local_id to catch up with single timestamp
+        int delta = tid_unique_ - sync_util::sync_logger::local_replica_id;
+        if (delta > 0) {
+            __sync_fetch_and_add(&sync_util::sync_logger::local_replica_id, delta);
+        }
+
         for (auto idxit = writeset; idxit != writeset_end; ++idxit) {
             if (likely(*idxit < tset_initial_capacity))
                 it = &tset0_[*idxit];
@@ -545,7 +561,7 @@ bool Transaction::try_commit(bool no_paxos) {
             while (1) {
                 try {
                     retry_c += 1;
-                    TThread::sclient->remoteInstall(vectorTimestamp);
+                    TThread::sclient->remoteInstall(tid_unique_);
                     break;
                 } catch (int n) {
 			break;
@@ -560,7 +576,7 @@ bool Transaction::try_commit(bool no_paxos) {
                 }
             }
 #else
-            TThread::sclient->remoteInstall(vectorTimestamp);
+            TThread::sclient->remoteInstall(tid_unique_);
 #endif
         }
     }
@@ -575,7 +591,7 @@ bool Transaction::try_commit(bool no_paxos) {
         #else
             int large_batch_num=400;
         #endif
-        serialize_util(nwriteset, false, MAX_ARRAY_SIZE_IN_BYTES, large_batch_num, vectorTimestamp);
+        serialize_util(nwriteset, false, MAX_ARRAY_SIZE_IN_BYTES, large_batch_num, tid_unique_);
     }
 #endif
 
@@ -595,7 +611,7 @@ abort:
 }
 
 // serialize transactions into log and then sent it out via Paxos
-inline void Transaction::serialize_util(unsigned nwriteset, bool on_remote, int max_bytes_size, int batch_size, std::vector<uint32_t> vectorT) const {
+inline void Transaction::serialize_util(unsigned nwriteset, bool on_remote, int max_bytes_size, int batch_size, uint32_t timestamp) const {
     if (nwriteset == 0) return;
 
     TransItem *it = nullptr;
@@ -610,21 +626,22 @@ inline void Transaction::serialize_util(unsigned nwriteset, bool on_remote, int 
     unsigned short int table_id = 0; // 2 bytes
 
 #if defined(TRACKING_LATENCY)
-    if (vectorT[TThread::get_shard_index()]%1000==0&&TThread::getPartitionID()==4){
+    if (timestamp%1000==0&&TThread::getPartitionID()==4){
         uint32_t cur_time = srolis::getCurrentTimeMillis();
         if (cur_time - start_time>= 5*1000 && cur_time - start_time <= 15*1000){ // time duration: [5,15]
-            sample_transaction_tracker[vectorT[TThread::get_shard_index()]] = srolis::getCurrentTimeMillis() ;
+            sample_transaction_tracker[timestamp] = srolis::getCurrentTimeMillis() ;
         }
     }
 #endif
 
     int epoch = get_current_term();
-    for (int i=0; i<TThread::get_nshards(); ++i) {
-        uint32_t tmp=epoch+vectorT[i]*10;
-        instance->update_commit_id(i, tmp);
-    }
-    // 1. copy current Commit ID
-    memcpy(array + w, &instance->latest_commit_id_v[TThread::get_shard_index()], sizeof(uint32_t));
+    // Single timestamp system: use same timestamp for all shards
+    uint32_t tmp = epoch + timestamp * 10;
+    // Single timestamp system: no need to loop over shards
+    instance->update_commit_id(tmp);
+    // 1. copy current Commit ID (single timestamp)
+    // memcpy(array + w, &instance->latest_commit_timestamp, sizeof(uint32_t));
+    memcpy(array + w, &tmp, sizeof(uint32_t));
     w+= sizeof(uint32_t);
 
     // 2. copy the count of K-V pairs
@@ -718,11 +735,9 @@ inline void Transaction::serialize_util(unsigned nwriteset, bool on_remote, int 
     if(instance->checkPushRequired()) {
       assert(pos <= MAX_ARRAY_SIZE_IN_BYTES) ;
       if(pos!=0) {
-          // 7. latest_commit_id: maximum for each shard
-          for (int i=0;i<TThread::get_nshards();i++) {
-            memcpy (queueLog + pos, &instance->latest_commit_id_v[i], sizeof(uint32_t));
-            pos += sizeof(uint32_t);
-          }
+          // 7. latest_commit_id: single timestamp
+          memcpy (queueLog + pos, &instance->latest_commit_timestamp, sizeof(uint32_t));
+          pos += sizeof(uint32_t);
           
           // 8. tracking purpose, the latency to commit a huge log
           uint32_t st_time = srolis::getCurrentTimeMillis();

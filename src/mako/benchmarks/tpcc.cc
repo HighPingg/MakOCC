@@ -815,26 +815,25 @@ protected:
     rcu::s_instance.fault_region();
 
     //warmup connections on learner-0 (assume the leader-0 will be killed)
+    //we don't do any warmup now
 #if defined(PAXOS_LIB_ENABLED)
     if (clusterRole==srolis::LOCALHOST_CENTER_INT){ // disable it if 10 shards
-      #if !defined(MEGA_BENCHMARK)
-      for (int i=0;i<=100;i++) {
-         ///*printf("start - pid:%d-i:%d", TThread::getPartitionID(), i);
-         //std::cout<<std::endl;
-         //uint32_t dstShardIndex=0;
-         //for (int i=0; i<nshards; i++) {
-         //  dstShardIndex |= (1 << i);
-         //}*/
-        uint32_t dstShardIndex=(1<<0);
-        std::vector<uint32_t> ret_values(nshards);
-        uint32_t req_val = i;
-        TThread::sclient->warmupRequest(req_val, srolis::LEARNER_CENTER_INT, ret_values, dstShardIndex);
-        int ret=0;
-        for (int j=0;j<nshards;j++)
-          ret += ret_values[j];
-      }
-      Warning("DONE a warmup on leader:%d to the learner-0\n", TThread::getPartitionID());
-      #endif
+      // #if !defined(MEGA_BENCHMARK)
+      // for (int i=0;i<=100;i++) {
+      //    ///*printf("start - pid:%d-i:%d", TThread::getPartitionID(), i);
+      //    //std::cout<<std::endl;
+      //    //uint32_t dstShardIndex=0;
+      //    //for (int i=0; i<nshards; i++) {
+      //    //  dstShardIndex |= (1 << i);
+      //    //}*/
+      //   uint32_t dstShardIndex=(1<<0);
+      //   uint32_t ret_value;
+      //   uint32_t req_val = i;
+      //   TThread::sclient->warmupRequest(req_val, srolis::LEARNER_CENTER_INT, ret_value, dstShardIndex);
+      //   int ret = ret_value;
+      // }
+      // Warning("DONE a warmup on leader:%d to the learner-0\n", TThread::getPartitionID());
+      // #endif
     }
 #endif
   }

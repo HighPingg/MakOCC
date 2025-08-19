@@ -154,8 +154,8 @@ public:
 
   virtual void shard_abort_txn(void *txn) = 0;
   virtual int shard_validate() = 0;
-  virtual void shard_install(std::vector<uint32_t> vectorT) = 0;
-  virtual void shard_serialize_util(std::vector<uint32_t> vectorT)  = 0;
+  virtual void shard_install(uint32_t timestamp) = 0;
+  virtual void shard_serialize_util(uint32_t timestamp)  = 0;
   virtual void shard_unlock(bool committed) = 0;
   virtual void shard_reset() = 0;
 };

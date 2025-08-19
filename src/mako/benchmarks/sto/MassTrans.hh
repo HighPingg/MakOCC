@@ -153,7 +153,7 @@ public:
       }
       item.observe(tversion_type(elem_vers));
       if (TThread::is_multiversion())
-        return MultiVersionValue::mvGET(retval, (char*)e->data(), TThread::txn->get_current_term(), sync_util::sync_logger::hist_timestamp, sync_util::sync_logger::hist_timestamp_vec);
+        return MultiVersionValue::mvGET(retval, (char*)e->data(), TThread::txn->get_current_term(), sync_util::sync_logger::hist_timestamp);
     } else {
       //Warning("Not found a value");
       ensureNotFound(lp.node(), lp.full_version_value());
@@ -370,8 +370,7 @@ public:
       bool ret = MultiVersionValue::mvGET(val,
                                           (char*)e->data(),
                                           TThread::txn->get_current_term(), 
-                                          sync_util::sync_logger::hist_timestamp,
-                                          sync_util::sync_logger::hist_timestamp_vec);
+                                          sync_util::sync_logger::hist_timestamp);
       if (ret){
         return callback(key, val);//query_callback_overload(key, val, callback);
       }else {
@@ -423,8 +422,7 @@ public:
       bool ret = MultiVersionValue::mvGET(val,
                                           (char*)e->data(),
                                           TThread::txn->get_current_term(), 
-                                          sync_util::sync_logger::hist_timestamp,
-                                          sync_util::sync_logger::hist_timestamp_vec);
+                                          sync_util::sync_logger::hist_timestamp);
       if (ret)
         return callback(key, val);//query_callback_overload(key, val, callback);
       else {
@@ -553,9 +551,7 @@ public:
     char *oldval_str=(char*)e->data();\
     int oldval_len=e->length();\
     srolis::Node* header = reinterpret_cast<srolis::Node*>(oldval_str+oldval_len-srolis::BITS_OF_NODE);\
-    for (int i=0;i<SHARDS;i++){\
-      header->timestamps[i]=0;\
-    } \
+    header->timestamp = 0; \
     header->data_size = 0; 
 
   void install(TransItem& item, Transaction& t) override {

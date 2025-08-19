@@ -102,7 +102,7 @@ class StringAllocator{
  public:
   size_t entries;
   size_t curr_pos;
-  std::vector<uint32_t> latest_commit_id_v;
+  uint32_t latest_commit_timestamp;  // Single timestamp instead of vector
 
   StringAllocator(size_t nshards_x, int max_bytes_size_x, int batch_size_x){
     LOG = (unsigned char *) malloc (max_bytes_size_x);
@@ -111,9 +111,7 @@ class StringAllocator{
     nshards = nshards_x;
     batch_size = batch_size_x;
     max_bytes_size = max_bytes_size_x;
-    latest_commit_id_v.resize(nshards);
-    for (size_t i=0; i<nshards; i++)
-        latest_commit_id_v[i] = 0;
+    latest_commit_timestamp = 0;
   }
 
   ~StringAllocator() {
@@ -127,12 +125,9 @@ class StringAllocator{
         return;
     }
     if(pos!=0) {
-        //string aa="";
-        for (int i=0;i<TThread::get_nshards();i++){
-            memcpy (queueLog + pos, &latest_commit_id_v[i], sizeof(uint32_t));
-            //aa+=std::to_string(latest_commit_id_v[i])+",";
-            pos += sizeof(uint32_t);
-        }
+        // Single timestamp system: write single timestamp and latency tracker
+        memcpy (queueLog + pos, &latest_commit_timestamp, sizeof(uint32_t));
+        pos += sizeof(uint32_t);
         uint32_t st_time = srolis::getCurrentTimeMillis();
         memcpy (queueLog + pos, &st_time, sizeof(uint32_t));
         pos += sizeof(uint32_t);
@@ -168,8 +163,7 @@ class StringAllocator{
   void resetMemory(){
     curr_pos = 0;
     entries = 0;
-    for (size_t i=0; i<nshards; i++)
-        latest_commit_id_v[i] = 0;
+    latest_commit_timestamp = 0;
   }
   bool checkLimits(size_t newLogLen){
   	return (curr_pos + newLogLen) < max_bytes_size;
@@ -194,9 +188,9 @@ class StringAllocator{
     return max_bytes_size;
   }
 
-  inline void update_commit_id(int ii, const uint32_t cid) {
-    // Warning("update_commit_id,ii:%d,cid:%llu,v:%llu",ii,cid,latest_commit_id_v[ii]);
-    latest_commit_id_v[ii]=std::max(latest_commit_id_v[ii],cid);
+  inline void update_commit_id(const uint32_t cid) {
+    // Single timestamp system: just track the maximum timestamp
+    latest_commit_timestamp = std::max(latest_commit_timestamp, cid);
   }
 
   bool add (const char *array, int len) {
@@ -472,11 +466,8 @@ private:
         start_tid_ = commit_tid_ = 0;
         tid_unique_ = 0;
         current_term_ = 0;
-        vectorTimestamp.resize(SHARDS);
-        for (int i=0;i<SHARDS;i++){
-            timestampsReadSet[i]=0;
-            vectorTimestamp[i]=0;
-        }
+        // Initialize single timestamp system
+        maxTimestampReadSet = 0;
         buf_.clear();
 #if STO_DEBUG_ABORTS
         abort_item_ = nullptr;
@@ -642,8 +633,8 @@ public:
     bool try_commit(bool no_paxos= false);
     bool shard_try_lock_last_writeset();
     int shard_validate();
-    void shard_install(std::vector<uint32_t> vectorT);
-    void shard_serialize_util(std::vector<uint32_t> vectorT);
+    void shard_install(uint32_t timestamp);
+    void shard_serialize_util(uint32_t timestamp);
     void shard_unlock(bool committed);
 
     void commit() {
@@ -739,7 +730,7 @@ public:
         return commit_tid_;
     }
 
-    void updateVectorizedTimestamp(std::vector<uint32_t> &vectorT) const {
+    void updateSingleTimestamp() const {
         assert(state_ == s_committing_locked || state_ == s_committing);
         //unsigned int ui;
 	    if(!tid_unique_)
@@ -747,9 +738,14 @@ public:
             //tid_unique_ = __rdtscp(&ui);
 
         if (TThread::writeset_shard_bits>0/*||TThread::readset_shard_bits>0*/) {
-            TThread::sclient->remoteGetTimestamp(vectorT);
+            // Get single timestamp from remote shards
+            uint32_t remote_timestamp = 0;
+            TThread::sclient->remoteGetTimestamp(remote_timestamp);
+            // Use the max timestamp
+            if (remote_timestamp > tid_unique_) {
+                tid_unique_ = remote_timestamp;
+            }
         }
-        vectorT[TThread::get_shard_index()] = tid_unique_;
     }
 
     void set_version(TVersion& vers, TVersion::type flags = 0) const {
@@ -782,7 +778,7 @@ public:
 
     static const char* state_name(int state);
     void print() const;
-    inline void serialize_util(unsigned nwriteset, bool on_remote, int max_bytes_size, int batch_size, std::vector<uint32_t> vectorT) const;
+    inline void serialize_util(unsigned nwriteset, bool on_remote, int max_bytes_size, int batch_size, uint32_t timestamp) const;
     void print(std::ostream& w) const;
 
     class Abort {};
@@ -803,10 +799,11 @@ public:
       return item->has_flag (TransItem::minsert_bit);
     }
 
-    mutable uint32_t tid_unique_; // using fetch_and_add instruction
+    // Single timestamp system: tid_unique_ now serves as the single timestamp
+    mutable uint32_t tid_unique_; // Single timestamp using fetch_and_add instruction
     mutable uint8_t current_term_;
-    mutable uint32_t timestampsReadSet[SHARDS]; 
-    mutable std::vector<uint32_t> vectorTimestamp;
+    // The maximal timestamp received for this transaction in its readSet
+    mutable uint32_t maxTimestampReadSet;
     mutable unordered_map<uint64_t, vector<uint64_t>> rollbacks_tracker; // <time in ms, shard clock of shard-0>
 
 private:
@@ -966,12 +963,12 @@ public:
         return TThread::txn->shard_validate();
     }
 
-    static void shard_install(std::vector<uint32_t> vectorT) {
-        TThread::txn->shard_install(vectorT);
+    static void shard_install(uint32_t timestamp) {
+        TThread::txn->shard_install(timestamp);
     }
 
-    static void shard_serialize_util(std::vector<uint32_t> vectorT)  {
-        TThread::txn->shard_serialize_util(vectorT);
+    static void shard_serialize_util(uint32_t timestamp)  {
+        TThread::txn->shard_serialize_util(timestamp);
     }
 
     static void shard_unlock(bool committed) {

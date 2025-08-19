@@ -4,25 +4,23 @@
 #include <unordered_set>
 #include "ThreadPool.h"
 
-std::vector<uint32_t> get_latest_commit_id(char *buffer, size_t len, int nshards) {
-    std::vector<uint32_t> ret;
-    ret.reserve(nshards+1);
-    int pos=len-sizeof(uint32_t)*(nshards+1);
-    // [0 - nshards-1] [latency_tracker]
-    //     VT            tracking latency to commit a log
-    for (int i=0;i<nshards+1;i++){
-        uint32_t tmp=0;
-        memcpy(&tmp, buffer+pos, sizeof(uint32_t));
-        ret.push_back(tmp);
-        pos+=sizeof(uint32_t);
-    }
-    return ret;
+// Single timestamp system: extracts timestamp and latency tracker from buffer
+CommitInfo get_latest_commit_info(char *buffer, size_t len) {
+    CommitInfo info;
+    
+    // Single timestamp format: last 2 uint32_t values are [timestamp, latency_tracker]
+    int pos = len - sizeof(uint32_t) * 2;
+    
+    memcpy(&info.timestamp, buffer + pos, sizeof(uint32_t));
+    pos += sizeof(uint32_t);
+    memcpy(&info.latency_tracker, buffer + pos, sizeof(uint32_t));
+    
+    return info;
 }
-
 
 size_t treplay_in_same_thread_opt_mbta_v2(size_t par_id, char *buffer, size_t len, abstract_db* db, int nshards) {
     //printf("replay a log, par_id:%d, len:%d\n", par_id, len);
-    len -= sizeof(uint32_t)*(nshards+1); // eliminate last max vectorized timestamp
+    len -= sizeof(uint32_t) * 2; // eliminate last timestamp and latency_tracker
     size_t ULL_LEN = sizeof (uint32_t);
 
     std::vector<WrappedLogV2*> _intermediateLogs;

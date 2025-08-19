@@ -9,7 +9,7 @@
 #define INIT_SYNC_UTIL_VARS \
     int sync_util::sync_logger::shardIdx = 0; \
     vector<std::atomic<uint32_t>> sync_util::sync_logger::local_timestamp_(80) ; \
-    vector<std::atomic<uint32_t>> sync_util::sync_logger::vectorized_w_(10) ; \
+    std::atomic<uint32_t> sync_util::sync_logger::single_watermark_(0) ; \
     int sync_util::sync_logger::nshards = 0; \
     int sync_util::sync_logger::local_replica_id = 0; \
     std::chrono::time_point<std::chrono::high_resolution_clock>  sync_util::sync_logger::last_update = std::chrono::high_resolution_clock::now(); \ 
@@ -22,7 +22,6 @@
     std::mutex sync_util::sync_logger::m ; \
     std::condition_variable sync_util::sync_logger::cv ; \
     unordered_map<int, uint32_t> sync_util::sync_logger::hist_timestamp = {}; \
-    unordered_map<int, vector<uint32_t>> sync_util::sync_logger::hist_timestamp_vec = {}; \
     std::atomic<uint32_t> sync_util::sync_logger::noops_cnt{0}; \
     std::atomic<uint32_t> sync_util::sync_logger::noops_cnt_hole{0}; \
     int sync_util::sync_logger::exchange_refresh_cnt = 0; \

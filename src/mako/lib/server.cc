@@ -132,10 +132,10 @@ namespace srolis
         int status = ErrorCode::SUCCESS;
         auto *req = reinterpret_cast<vector_int_request_t *>(reqBuf);
         try {
-            std::vector<uint32_t> ret;
-            decode_vec_uint32(req->value, TThread::get_nshards()).swap(ret);
-            db->shard_install(ret);
-            db->shard_serialize_util(ret);
+            // Single timestamp system: decode single timestamp directly
+            uint32_t timestamp = decode_single_timestamp(req->value);
+            db->shard_install(timestamp);
+            db->shard_serialize_util(timestamp);
             db->shard_unlock(true);
         } catch (abstract_db::abstract_abort_exception &ex) {
             //db->shard_abort_txn(nullptr);

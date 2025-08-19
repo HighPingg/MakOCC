@@ -23,11 +23,10 @@
 #define UPDATE_VS(val,len) \
   srolis::Node *header = GET_NODE_POINTER(val,len); \
   uint32_t *shardtimestamp = GET_NODE_EXTRA_POINTER(val,len); \
-  for (int i=0;i<SHARDS;i++){\
-    TThread::txn->timestampsReadSet[i]=MAX(TThread::txn->timestampsReadSet[i],header->timestamps[i]);\
-  } \
+  /* Update single max timestamp in readset */ \
+  TThread::txn->maxTimestampReadSet = MAX(TThread::txn->maxTimestampReadSet, header->timestamp); \
   if (control_mode==4) { \
-    if (*shardtimestamp % 10 < TThread::txn->current_term_ && sync_util::sync_logger::safety_check(header->timestamps)){ \
+    if (*shardtimestamp % 10 < TThread::txn->current_term_ && sync_util::sync_logger::safety_check(header->timestamp)){ \
       TThread::transget_without_stable = true; \
       TThread::transget_without_throw = true; \
     } \
@@ -35,11 +34,10 @@
 #else
 #define UPDATE_VS(val,len) \
   srolis::Node *header = GET_NODE_POINTER(val,len); \
-  for (int i=0;i<SHARDS;i++){\
-    TThread::txn->timestampsReadSet[i]=MAX(TThread::txn->timestampsReadSet[i],header->timestamps[i]);\
-  } \
+  /* Update single max timestamp in readset */ \
+  TThread::txn->maxTimestampReadSet = MAX(TThread::txn->maxTimestampReadSet, header->timestamp); \
   if (control_mode==1){ \
-    if (TThread::txn->timestampsReadSet[0]>sync_util::sync_logger::failed_shard_ts){ \
+    if (TThread::txn->maxTimestampReadSet>sync_util::sync_logger::failed_shard_ts){ \
       TThread::transget_without_throw = true;\
     } \
   }
@@ -1075,12 +1073,12 @@ public:
     return Sto::shard_validate();
   }
 
-  void shard_install(std::vector<uint32_t> vectorT) {
-    Sto::shard_install(vectorT);
+  void shard_install(uint32_t timestamp) {
+    Sto::shard_install(timestamp);
   }
 
-  void shard_serialize_util(std::vector<uint32_t> vectorT)  {
-    Sto::shard_serialize_util(vectorT); // it MUST be successful!!!
+  void shard_serialize_util(uint32_t timestamp)  {
+    Sto::shard_serialize_util(timestamp); // it MUST be successful!!!
   }
 
   void shard_unlock(bool committed) {

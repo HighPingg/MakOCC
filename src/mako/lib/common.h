@@ -102,7 +102,7 @@ namespace srolis
     }
 
     struct Node {
-        uint32_t timestamps[SHARDS];
+        uint32_t timestamp;  // Single timestamp instead of vector
         int16_t data_size;
         char *data;
     };
@@ -358,27 +358,18 @@ namespace srolis
     using error_continuation_t =
         std::function<void(const std::string &request, ErrorCode err)>;
 
-    static char* encode_vec_uint32(std::vector<uint32_t> a, int nshards) {
-        char *cc=(char*)malloc(sizeof(uint32_t)*nshards);
-        int pos=0;
-        for(int i=0;i<nshards;i++){
-            memcpy(cc+pos, &a[i], sizeof(uint32_t));
-            pos+=sizeof(uint32_t);
-        }
+    // Single timestamp encoding
+    static char* encode_single_timestamp(uint32_t timestamp) {
+        char *cc=(char*)malloc(sizeof(uint32_t));
+        memcpy(cc, &timestamp, sizeof(uint32_t));
         return cc;
-    } 
-
-    // to avoid copying, using decode_vec_uint32(...).swap(a);
-    static std::vector<uint32_t> decode_vec_uint32(const char*cc, int nshards) {
-        std::vector<uint32_t> ret(nshards);
-        int pos=0;
-        for (int i=0;i<nshards;i++){
-            uint32_t tmp=0;
-            memcpy(&tmp, cc+pos, sizeof(uint32_t));
-            pos+=sizeof(uint32_t);
-            ret[i] = tmp;
-        }
-        return ret;
+    }
+    
+    // Single timestamp decoding
+    static uint32_t decode_single_timestamp(const char* cc) {
+        uint32_t timestamp;
+        memcpy(&timestamp, cc, sizeof(uint32_t));
+        return timestamp;
     }
 
 

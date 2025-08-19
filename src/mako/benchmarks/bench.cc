@@ -417,7 +417,6 @@ bench_runner::run()
   }
   } // end of f_mode==0
 
-  Warning("# of shards:%d",SHARDS);
   Warning("# of nthreads:%d",nthreads);
   map<string, size_t> table_sizes_before;
   if (verbose) {

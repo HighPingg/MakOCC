@@ -140,26 +140,24 @@ int PaxosWorker::Next(int slot_id, shared_ptr<Marshallable> cmd) {
       if (len > 0) {
          const char *log = sp_log_entry.log_entry.c_str() ;
          
-         std::vector<uint32_t> latest_commit_id_v;
-         callback_par_id_return_(log, 
-                                 len, 
-                                 site_info_->partition_id_,
-                                 slot_id,
-                                 un_replay_logs_).swap(latest_commit_id_v);
+         // Single timestamp system: get encoded value (timestamp * 10 + status)
+         int encoded_value = callback_par_id_return_(log, 
+                                                    len, 
+                                                    site_info_->partition_id_,
+                                                    slot_id,
+                                                    un_replay_logs_);
+         status = encoded_value % 10;  // Extract status from last digit
+         uint32_t timestamp = encoded_value / 10;  // Extract timestamp
          //Log_info("XXXXX: partition_id: %d, id: %d, proc_name: %s, role: %d", site_info_->partition_id_, site_info_->id, site_info_->proc_name.c_str(), site_info_->role);                                 
-         //Log_info("received a message: %d, latest_commit_id_v.size: %d", sp_log_entry.length, latest_commit_id_v.size());
-        //  for (int i=0;i<latest_commit_id_v.size();i++)
-        //   Log_info("  XXXX: i:%d,v:%d", i,latest_commit_id_v[i]);
-         status = latest_commit_id_v[0] % 10;
-         latest_commit_id_v[0] = latest_commit_id_v[0] / 10;
+         //Log_info("received a message: %d, status: %d, timestamp: %u", sp_log_entry.length, status, timestamp);
          // status: 1 => init, 2 => ending of paxos group, 3 => can't pass the safety check, 4 => complete replay
          //Log_info("par_id: %d, append a log into un_replay_logs, size: %lld, status: %d, first[0]: %llu, received: %d", 
          //         site_info_->partition_id_, un_replay_logs_.size(), status, latest_commit_id_v[0], sp_log_entry.length);
          if (status == 3) {
              char *dest = (char *)malloc(len) ;
              memcpy(dest, log, len) ;
-             un_replay_logs_.push(std::make_tuple(latest_commit_id_v, slot_id, status, len, (const char*)dest)) ;
-             //un_replay_logs_.push(std::make_tuple(latest_commit_id_v, slot_id, status, len, (const char*)log)) ;
+             un_replay_logs_.push(std::make_tuple(timestamp, slot_id, status, len, (const char*)dest)) ;
+             //un_replay_logs_.push(std::make_tuple(timestamp, slot_id, status, len, (const char*)log)) ;
          } else if (status == 1) {
              std::cout << "this should never happen!!!" << std::endl;
          } else if (status == 5) {
@@ -169,7 +167,7 @@ int PaxosWorker::Next(int slot_id, shared_ptr<Marshallable> cmd) {
       } else {
         // the ending signal
         const char *log = sp_log_entry.log_entry.c_str() ;
-        callback_par_id_return_(log, len, site_info_->partition_id_, slot_id, un_replay_logs_) ;
+        int ending_status = callback_par_id_return_(log, len, site_info_->partition_id_, slot_id, un_replay_logs_) ;
       }
     } else {
       verify(0);
@@ -724,7 +722,7 @@ void PaxosWorker::register_apply_callback_par_id(std::function<void(const char *
                                            std::placeholders::_2));
 }
 
-void PaxosWorker::register_apply_callback_par_id_return(std::function<std::vector<uint32_t>(const char *&, int, int, int, std::queue<std::tuple<std::vector<uint32_t>, int, int, int, const char *>> &)> cb) {
+void PaxosWorker::register_apply_callback_par_id_return(std::function<int(const char *&, int, int, int, std::queue<std::tuple<int, int, int, int, const char *>> &)> cb) {
     this->callback_par_id_return_ = cb;
     verify(rep_sched_ != nullptr);
     rep_sched_->RegLearnerAction(std::bind(&PaxosWorker::Next,

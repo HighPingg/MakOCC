@@ -9,14 +9,16 @@
 
 using namespace std;
 
+// Single timestamp system: vectors contain replicated single values for compatibility
 namespace sync_util {
     class sync_logger {
     public:
         // initialize it in the benchmarks/common3.h
         // latest timestamp for each local Paxos stream
+        // Please, we can keep this as vector
         static vector<std::atomic<uint32_t>> local_timestamp_;
-        // latest watermark for each remote shard
-        static vector<std::atomic<uint32_t>> vectorized_w_;
+        // Single watermark for the entire system
+        static std::atomic<uint32_t> single_watermark_;
         
         static std::chrono::time_point<std::chrono::high_resolution_clock> last_update;
         static int shardIdx;
@@ -34,8 +36,6 @@ namespace sync_util {
         static std::condition_variable cv;
         // term --> shard watermark (not term info)
         static std::unordered_map<int, uint32_t> hist_timestamp; // on the running shard
-        // term --> vectorized watermark (+ term info)
-        static std::unordered_map<int, vector<uint32_t>> hist_timestamp_vec; // on the running shard; In this implementation, we discard INF
         static std::atomic<uint32_t> noops_cnt;
         static std::atomic<uint32_t> noops_cnt_hole;
         static int exchange_refresh_cnt;
@@ -49,9 +49,8 @@ namespace sync_util {
             for (int i = 0; i < nthreads; i++) {
                 local_timestamp_[i].store(0, memory_order_relaxed);
             }
-            for (int i = 0; i < nshards; i++) {
-                vectorized_w_[i].store(0, memory_order_relaxed);
-            }
+            // Initialize single watermark
+            single_watermark_.store(0, memory_order_relaxed);
             shardIdx = shardIdx_X;
             nshards = nshards_X;
             nthreads = nthreads_X;
@@ -80,9 +79,7 @@ namespace sync_util {
            for (int i = 0; i < nthreads; i++) {
               local_timestamp_[i].store(0, memory_order_relaxed);
            }
-           for (int i = 0; i < nshards; i++) {
-               vectorized_w_[i].store(0, memory_order_relaxed);
-           } 
+           single_watermark_.store(0, memory_order_relaxed); 
         }
 
         static void shutdown() {
@@ -92,56 +89,38 @@ namespace sync_util {
             sync_util::sync_logger::cv.notify_one();
         }
 
-        // b -> vectorized watermark
-        static bool safety_check(std::vector<uint32_t> a, std::vector<uint32_t> b) {
-            //if (worker_running)
-            //    printf("a:%d,%d,%d;b:%d,%d,%d;pid:%d\n",a[0],a[1],a[2],b[0],b[1],b[2],TThread::getPartitionID());
-            return true;
+        // Single timestamp safety check
+        static bool safety_check(uint32_t timestamp, uint32_t watermark) {
             if (!worker_running) return true;
-            for (int i=0;i<nshards;i++)
-                if (a[i]>b[i]) return false;
-            return true;
+            return timestamp <= watermark;
         }
-
-        static bool safety_check(uint32_t *a, std::vector<uint32_t> b) {
-            //if (worker_running)
-            //    printf("a:%d,%d,%d;b:%d,%d,%d;pid:%d\n",a[0],a[1],a[2],b[0],b[1],b[2],TThread::getPartitionID());
-            return true;
+        
+        // Single timestamp check against global watermark
+        static bool safety_check(uint32_t timestamp) {
             if (!worker_running) return true;
-            for (int i=0;i<nshards;i++)
-                if (a[i]>b[i]) return false;
-            return true;
+            // Check against single watermark
+            return timestamp <= single_watermark_.load(memory_order_acquire);
         }
-
-        static bool safety_check(uint32_t *a) {
-            //if (worker_running)
-            //    printf("a:%d,%d,%d;b:%d,%d,%d;pid:%d\n",a[0],a[1],a[2],b[0],b[1],b[2],TThread::getPartitionID());
-            return true;
-            if (!worker_running) return true;
-            for (int i=0;i<nshards;i++)
-                if (a[i]>vectorized_w_[i]) return false;
-            return true;
-        }
-
+        
         static uint32_t computeLocal() { // compute G immediately and strictly, tt*10+epoch
             uint32_t min_so_far = numeric_limits<uint32_t>::max();
 
             for (int i=0; i<nthreads; i++) {
                 auto c = local_timestamp_[i].load(memory_order_acquire) ;
-                if (c >= vectorized_w_[shardIdx])
+                if (c >= single_watermark_.load(memory_order_acquire))
                     min_so_far = min(min_so_far, c);
             }
             if (min_so_far!=numeric_limits<uint32_t>::max()) {
 #if defined(COCO)
                 if ((std::chrono::high_resolution_clock::now() - last_update).count() / 1000.0 / 1000.0 >= COCO_ADVANCING_DURATION) {
 #endif
-                    vectorized_w_[shardIdx].store(min_so_far, memory_order_release);
+                    single_watermark_.store(min_so_far, memory_order_release);
 #if defined(COCO)
                     last_update = std::chrono::high_resolution_clock::now() ;
                 }
 #endif
             }
-            return vectorized_w_[shardIdx].load(memory_order_acquire) ;  // invalidate the cache
+            return single_watermark_.load(memory_order_acquire) ;  // invalidate the cache
         }
 
         // In previous submission, we assume the healthy shards are always INF
@@ -149,17 +128,18 @@ namespace sync_util {
            hist_timestamp[epoch]=tt; 
         }
 
-        // FVW in the old epoch
+        // Single timestamp system: ensure vector contains replicated value
         static void update_stable_timestamp_vec(int epoch, vector<uint32_t> tt_vec) { 
-           hist_timestamp_vec[epoch].swap(tt_vec);
-           std::cout<<"update_stable_timestamp_vec, epoch:"<<epoch<<",tt:"<<hist_timestamp_vec[epoch][0]<<std::endl;
+           // In single timestamp system, just use the first element
+           if (!tt_vec.empty()) {
+               hist_timestamp[epoch] = tt_vec[0];
+               std::cout<<"update_stable_timestamp_vec, epoch:"<<epoch<<",tt:"<<hist_timestamp[epoch]<<std::endl;
+           }
         }
         
-        static vector<uint32_t> retrieveW() {
-            static std::vector<uint32_t> vectorized_w_local_(nshards);
-            for (int i=0;i<nshards;i++)
-                vectorized_w_local_[i] = vectorized_w_[i].load(memory_order_acquire);
-            return vectorized_w_local_;
+        static uint32_t retrieveW() {
+            // Return single watermark
+            return single_watermark_.load(memory_order_acquire);
         }
 
         static void start_advancer() {
@@ -174,11 +154,18 @@ namespace sync_util {
         }
 
         static void setShardWBlind(uint32_t w, int sIdx) {
-            vectorized_w_[sIdx].store(w, memory_order_release);
+            // In single timestamp system, just update single watermark
+            single_watermark_.store(w, memory_order_release);
+        }
+        
+        // Helper for single timestamp system
+        static void setSingleWatermark(uint32_t w) {
+            single_watermark_.store(w, memory_order_release);
         }
 
         static uint32_t retrieveShardW() {
-           return vectorized_w_[shardIdx].load(memory_order_acquire);  // timestamp*10+epoch
+           // Return single watermark
+           return single_watermark_.load(memory_order_acquire);  // timestamp*10+epoch
         }
 
         // detached thread to advance local watermark on the current shard
@@ -190,19 +177,20 @@ namespace sync_util {
                 uint32_t min_so_far = numeric_limits<uint32_t>::max();
                 for (int i=0;i<nthreads;i++) {
                     auto c = local_timestamp_[i].load(memory_order_acquire) ;
-                    if (c>0 && c >= vectorized_w_[shardIdx])
+                    uint32_t current_watermark = single_watermark_.load(memory_order_acquire);
+                    if (c>0 && c >= current_watermark)
                         min_so_far = min(min_so_far, local_timestamp_[i].load(memory_order_acquire));
                 }
-                if (min_so_far!=numeric_limits<uint32_t>::max())
-                    vectorized_w_[shardIdx].store(min_so_far, memory_order_release);
+                if (min_so_far!=numeric_limits<uint32_t>::max()) {
+                    // In single timestamp system, update all shards
+                    setSingleWatermark(min_so_far);
+                }
                 
                 std::this_thread::sleep_for(std::chrono::microseconds(1 * 1000));
                 // if (counter % 200 == 0) {
-                //      Warning("watermark update: %llu, shardIdx: %d, w0: %llu, w1: %llu, w2: %llu", 
+                //      Warning("watermark update: %llu, shardIdx: %d, watermark: %llu", 
                 //              min_so_far, shardIdx, 
-                //              vectorized_w_[0].load(memory_order_acquire),
-                //              vectorized_w_[1].load(memory_order_acquire),
-                //              vectorized_w_[2].load(memory_order_acquire));
+                //              single_watermark_.load(memory_order_acquire));
                 //     Warning("local-w: %llu, %llu, %llu, %llu, %llu, %llu, %llu, %llu",
                 //             local_timestamp_[0].load(),local_timestamp_[1].load(),local_timestamp_[2].load(),local_timestamp_[3].load(),
                 //             local_timestamp_[4].load(),local_timestamp_[5].load(),local_timestamp_[6].load(),local_timestamp_[7].load());
@@ -232,7 +220,7 @@ namespace sync_util {
         static int get_exchange_refresh_cnt() { return exchange_refresh_cnt; } 
 
         static void client_watermark_exchange() {
-            std::vector<uint32_t> vectorWatermark(nshards);
+            uint32_t watermark = 0;
             // erpc ports: 
             //   0-warehouses-1: db worker threads
             //   warehouses: server receiver
@@ -256,11 +244,11 @@ namespace sync_util {
                         if (i==shardIdx) continue;
                         dstShardIndex |= (1 << i);
                     }
-                    sclient->remoteExchangeWatermark(vectorWatermark, dstShardIndex);
-                    for (int i=0; i<nshards; i++) {
-                        if (i == shardIdx) continue;
-                        if (vectorized_w_[i].load()<vectorWatermark[i])
-                            vectorized_w_[i].store(vectorWatermark[i], memory_order_release);
+                    sclient->remoteExchangeWatermark(watermark, dstShardIndex);
+                    // Update single watermark if received value is higher
+                    uint32_t currentWatermark = single_watermark_.load(memory_order_acquire);
+                    if (watermark > currentWatermark) {
+                        setSingleWatermark(watermark);
                     }
                     std::this_thread::sleep_for(std::chrono::microseconds(1 * 1000));
                     exchange_refresh_cnt++;
@@ -294,10 +282,10 @@ namespace sync_util {
             }
             uint32_t shard_tt = retrieveShardW()/10;
             value = shard_tt*10+value;
-            std::vector<uint32_t> ret_values(nshards);
+            uint32_t ret_value = 0;
             Warning("client for the control is starting! control:%d, value:%zu", control, value);
             try{
-                control_sclient->remoteControl(control, value, ret_values, dstShardIndex);
+                control_sclient->remoteControl(control, value, ret_value, dstShardIndex);
             } catch(int n) {
                 Panic("remoteControl throw an error");
             }
@@ -326,10 +314,10 @@ namespace sync_util {
 
             uint32_t shard_tt = retrieveShardW()/10;
             value = shard_tt*10+value;
-            std::vector<uint32_t> ret_values(nshards);
+            uint32_t ret_value = 0;
             Warning("client for the control is starting! control:%d, value:%lld", control, value);
             try{
-                control_sclient->remoteControl(control, value, ret_values, dstShardIndex);
+                control_sclient->remoteControl(control, value, ret_value, dstShardIndex);
             } catch(int n) {
                 Panic("remoteControl throw an error");
             }
