@@ -51,6 +51,7 @@ main(int argc, char **argv)
   int kPaxosBatchSize = 50000;
   vector<string> paxos_config_file{};
   string paxos_proc_name = srolis::LOCALHOST_CENTER;
+  string site_name = "";  // For new config format
   static std::atomic<int> end_received(0);
   static std::atomic<int> end_received_leader(0);
 
@@ -90,11 +91,12 @@ main(int argc, char **argv)
       {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
       {"use-hashtable"		          , no_argument	,     &use_hashtable	             , 1}   ,
       {"paxos-config"               , required_argument , 0                          , 'F'} ,
+      {"site-name"                  , required_argument , 0                          , 'N'} , // New option
       //{"sto-batch-size"             , optional_argument , 0                          , 'S'},
       {0, 0, 0, 0}
     };
     int option_index = 0;
-    int c = getopt_long(argc, argv, "b:s:t:d:B:f:r:n:o:m:l:a:x:g:q:F:P:S", long_options, &option_index);
+    int c = getopt_long(argc, argv, "b:s:t:d:B:f:r:n:o:m:l:a:x:g:q:F:P:N:S", long_options, &option_index);
     if (c == -1)
       break;
 
@@ -126,6 +128,10 @@ main(int argc, char **argv)
     case 'g':
       shardIndex = strtoul(optarg, NULL, 10);
       ALWAYS_ASSERT(shardIndex >= 0);
+      break;
+
+    case 'N':
+      site_name = string(optarg);
       break;
 
     case 'P':
@@ -211,6 +217,43 @@ main(int argc, char **argv)
   }
 
   verbose = 1;
+
+  // Handle new configuration format with site-name
+  if (!site_name.empty() && config != nullptr) {
+    auto site = config->GetSiteByName(site_name);
+    if (!site) {
+      cerr << "[ERROR] Site " << site_name << " not found in configuration" << endl;
+      return 1;
+    }
+    
+    // Determine if this site is a leader
+    leader_config = site->is_leader ? 1 : 0;
+    
+    // Set shard index from site
+    shardIndex = site->shard_id;
+    
+    // Set cluster role for compatibility
+    if (site->is_leader) {
+      cluster = srolis::LOCALHOST_CENTER;
+      clusterRole = srolis::LOCALHOST_CENTER_INT;
+      paxos_proc_name = srolis::LOCALHOST_CENTER;
+    } else if (site->replica_idx == 1) {
+      cluster = srolis::P1_CENTER;
+      clusterRole = srolis::P1_CENTER_INT;
+      paxos_proc_name = srolis::P1_CENTER;
+    } else if (site->replica_idx == 2) {
+      cluster = srolis::P2_CENTER;
+      clusterRole = srolis::P2_CENTER_INT;
+      paxos_proc_name = srolis::P2_CENTER;
+    } else {
+      cluster = srolis::LEARNER_CENTER;
+      clusterRole = srolis::LEARNER_CENTER_INT;
+      paxos_proc_name = srolis::LEARNER_CENTER;
+    }
+    
+    Notice("Site %s: shard=%d, replica_idx=%d, is_leader=%d, cluster=%s", 
+           site_name.c_str(), site->shard_id, site->replica_idx, site->is_leader, cluster.c_str());
+  }
 
   if (bench_type == "tpcc") {
     workload_type = 1;
