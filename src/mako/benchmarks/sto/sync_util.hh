@@ -208,7 +208,7 @@ namespace sync_util {
 
         // for the server
         static void server_watermark_exchange() {
-            std::string local_uri = config->shard(shardIdx, srolis::convertCluster(cluster)).host;
+            std::string local_uri = config->shard(shardIdx, mako::convertCluster(cluster)).host;
             auto id = config->warehouses + 1;
             auto file = config->configFile;
             TThread::set_nshards(nshards);
@@ -238,7 +238,7 @@ namespace sync_util {
             auto id = config->warehouses + 2;
             TThread::set_nshards(nshards);
             TThread::set_shard_index(shardIdx);
-            auto sclient = new srolis::ShardClient(config->configFile,
+            auto sclient = new mako::ShardClient(config->configFile,
                                                    cluster,
                                                    shardIdx,
                                                    id, /* par_id */
@@ -278,7 +278,7 @@ namespace sync_util {
             TThread::set_nshards(nshards);
             TThread::set_shard_index(shardIdx);
             // client is created multiple times
-            auto static control_sclient = new srolis::ShardClient(config->configFile,
+            auto static control_sclient = new mako::ShardClient(config->configFile,
                                                    cluster,
                                                    shardIdx,
                                                    id, /* par_id */
@@ -306,7 +306,7 @@ namespace sync_util {
             auto id = config->warehouses + 3;
             TThread::set_nshards(nshards);
             TThread::set_shard_index(shardIdx);
-            auto static control_sclient = new srolis::ShardClient(config->configFile,
+            auto static control_sclient = new mako::ShardClient(config->configFile,
                                                    cluster,
                                                    shardIdx,
                                                    id, /* par_id */

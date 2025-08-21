@@ -14,7 +14,7 @@
 
 void register_sync_util_sc(std::function<int()>);
 
-namespace srolis
+namespace mako
 {
     using namespace std;
 

@@ -22,7 +22,7 @@ void transport_response(void *_context, void *_tag) {
     //std::cout << "receive a response:" << rt->resp_msgbuf.buf_ << std::endl;
     rt->blocked = false;
     const double req_lat_us =
-      erpc::to_usec(srolis::rdtsc() - c->start_tsc_, c->rpc->get_freq_ghz());
+      erpc::to_usec(mako::rdtsc() - c->start_tsc_, c->rpc->get_freq_ghz());
     rt->latency = req_lat_us; 
     c->rpc->free_msg_buffer(rt->req_msgbuf);
     c->rpc->free_msg_buffer(rt->resp_msgbuf);
@@ -60,7 +60,7 @@ static void client_thread(int thread_id) {
         
         int req_type = rand() % 10;
         //std::cout<<"send a request:"<<reqBuf->req_nr<<std::endl;
-        c->start_tsc_ = srolis::rdtsc();
+        c->start_tsc_ = mako::rdtsc();
         c->rpc->enqueue_request(session_num, req_type, &thread_tag->req_msgbuf, &thread_tag->resp_msgbuf, transport_response, thread_tag /* _tag */);
         while (thread_tag->blocked) {
             c->rpc->run_event_loop_once();

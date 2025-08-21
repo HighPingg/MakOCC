@@ -72,40 +72,40 @@ static void fasttransport_request(erpc::ReqHandle *req_handle, void *_context)
     auto *c = static_cast<AppContext *>(_context);
 
     // handle the watermark exchange request
-    if (req_handle->get_req_msgbuf()->get_req_type() == srolis::watermarkReqType) {
+    if (req_handle->get_req_msgbuf()->get_req_type() == mako::watermarkReqType) {
         Debug("received a watermarkReqType");
         char *reqBuf = reinterpret_cast<char *>(req_handle->get_req_msgbuf()->buf_);
         char *respBuf = reinterpret_cast<char *>(req_handle->pre_resp_msgbuf_.buf_);
-        auto *req = reinterpret_cast<srolis::basic_request_t *>(reqBuf);
-        auto *resp = reinterpret_cast<srolis::get_int_response_t *>(respBuf);
+        auto *req = reinterpret_cast<mako::basic_request_t *>(reqBuf);
+        auto *resp = reinterpret_cast<mako::get_int_response_t *>(respBuf);
         resp->result = sync_util::sync_logger::retrieveShardW();
         resp->req_nr = req->req_nr;
-        resp->status = srolis::ErrorCode::SUCCESS;
+        resp->status = mako::ErrorCode::SUCCESS;
         resp->shard_index = TThread::get_shard_index();
         auto &respX = req_handle->pre_resp_msgbuf_;
-        c->msg_size_resp_sent += sizeof(srolis::get_int_response_t);
+        c->msg_size_resp_sent += sizeof(mako::get_int_response_t);
         c->msg_counter_resp_sent += 1;
-        c->rpc->resize_msg_buffer(&respX, sizeof(srolis::get_int_response_t));
+        c->rpc->resize_msg_buffer(&respX, sizeof(mako::get_int_response_t));
         c->rpc->enqueue_response(req_handle, &respX);
-    } else if (req_handle->get_req_msgbuf()->get_req_type() == srolis::warmupReqType) {
+    } else if (req_handle->get_req_msgbuf()->get_req_type() == mako::warmupReqType) {
         char *reqBuf = reinterpret_cast<char *>(req_handle->get_req_msgbuf()->buf_);
         char *respBuf = reinterpret_cast<char *>(req_handle->pre_resp_msgbuf_.buf_);
-        auto *resp = reinterpret_cast<srolis::get_int_response_t *>(respBuf);
-        auto *req = reinterpret_cast<srolis::warmup_request_t *>(reqBuf);
+        auto *resp = reinterpret_cast<mako::get_int_response_t *>(respBuf);
+        auto *req = reinterpret_cast<mako::warmup_request_t *>(reqBuf);
         resp->result = 1;
         resp->req_nr = req->req_nr;
-        resp->status = srolis::ErrorCode::SUCCESS;
+        resp->status = mako::ErrorCode::SUCCESS;
         resp->shard_index = TThread::get_shard_index();
         auto &respX = req_handle->pre_resp_msgbuf_;
-        c->msg_size_resp_sent += sizeof(srolis::get_int_response_t);
+        c->msg_size_resp_sent += sizeof(mako::get_int_response_t);
         c->msg_counter_resp_sent += 1;
-        c->rpc->resize_msg_buffer(&respX, sizeof(srolis::get_int_response_t));
+        c->rpc->resize_msg_buffer(&respX, sizeof(mako::get_int_response_t));
         c->rpc->enqueue_response(req_handle, &respX);
-    } else if (req_handle->get_req_msgbuf()->get_req_type() == srolis::controlReqType) {
+    } else if (req_handle->get_req_msgbuf()->get_req_type() == mako::controlReqType) {
         char *reqBuf = reinterpret_cast<char *>(req_handle->get_req_msgbuf()->buf_);
         char *respBuf = reinterpret_cast<char *>(req_handle->pre_resp_msgbuf_.buf_);
-        auto *req = reinterpret_cast<srolis::control_request_t*>(reqBuf);
-        auto *resp = reinterpret_cast<srolis::get_int_response_t *>(respBuf);
+        auto *req = reinterpret_cast<mako::control_request_t*>(reqBuf);
+        auto *resp = reinterpret_cast<mako::get_int_response_t *>(respBuf);
         Warning("# received a controlReqType, control: %d, shardIndex: %lld, targert_server_id: %llu", req->control, req->value, req->targert_server_id);
         
         bool is_datacenter_failure = req->targert_server_id == 10000;
@@ -116,17 +116,17 @@ static void fasttransport_request(erpc::ReqHandle *req_handle, void *_context)
             bench_callback_(req->control, req->value); // register_fasttransport_for_bench in bench.cc
         resp->result = 0;
         resp->req_nr = req->req_nr;
-        resp->status = srolis::ErrorCode::SUCCESS;
+        resp->status = mako::ErrorCode::SUCCESS;
         resp->shard_index = TThread::get_shard_index();
         auto &respX = req_handle->pre_resp_msgbuf_;
-        c->msg_size_resp_sent += sizeof(srolis::get_int_response_t);
+        c->msg_size_resp_sent += sizeof(mako::get_int_response_t);
         c->msg_counter_resp_sent += 1;
-        c->rpc->resize_msg_buffer(&respX, sizeof(srolis::get_int_response_t));
+        c->rpc->resize_msg_buffer(&respX, sizeof(mako::get_int_response_t));
         c->rpc->enqueue_response(req_handle, &respX);
         //Warning("# received a controlReqType(back), control: %d, shardIndex: %lld", req->control, req->value);
     }
     else {
-        auto *target_server_id_reader = (srolis::TargetServerIDReader *)req_handle->get_req_msgbuf()->buf_;
+        auto *target_server_id_reader = (mako::TargetServerIDReader *)req_handle->get_req_msgbuf()->buf_;
         auto *helper_queue = c->queue_holders[target_server_id_reader->targert_server_id];
         helper_queue->add_one_req(req_handle, 0);
     }
@@ -154,13 +154,13 @@ FastTransport::FastTransport(std::string file,
 {
     Assert(numa_node <= numa_max_node());
     c = new AppContext();
-    freq_ghz_ = srolis::measure_rdtsc_freq();
+    freq_ghz_ = mako::measure_rdtsc_freq();
     isUpdateConfig = false;
-    ms1_cycles = srolis::ms_to_cycles(1, freq_ghz_);
-    start_transport = srolis::rdtsc();
+    ms1_cycles = mako::ms_to_cycles(1, freq_ghz_);
+    start_transport = mako::rdtsc();
     start_transport_clock = std::chrono::high_resolution_clock::now();
     breakTimeout = false;
-    clusterRole = srolis::convertCluster(cluster);
+    clusterRole = mako::convertCluster(cluster);
     
     // The first thread to grab the lock initializes the transport
     fasttransport_lock.lock();
@@ -222,14 +222,14 @@ void FastTransport::stats() {
 }
 
 int FastTransport::handleTimeout(size_t start_tsc, int req_type, std::string extra) {
-    if (clusterRole!=srolis::LOCALHOST_CENTER_INT) {
+    if (clusterRole!=mako::LOCALHOST_CENTER_INT) {
         return 0;
     }
     auto end_transport_clock = std::chrono::high_resolution_clock::now();
     if (end_transport_clock - start_transport_clock < std::chrono::seconds(8)) {
         return 0;
     }
-    size_t end_tsc = srolis::rdtsc();
+    size_t end_tsc = mako::rdtsc();
     if ((end_tsc-start_tsc)/(0.0+ms1_cycles)>=5) { // almost no effect on the results
         TThread::skipBeforeRemoteNewOrder = 4;
         TThread::skipBeforeRemotePayment = 4;
@@ -254,17 +254,17 @@ inline char *FastTransport::GetRequestBuf(size_t reqLen, size_t respLen)
 
 inline int FastTransport::GetSession(TransportReceiver *src, uint8_t dstShardIdx, uint16_t id, int forceCenter = -1)
 {
-    auto session_key = std::make_tuple(srolis::LOCALHOST_CENTER_INT, dstShardIdx, id);
+    auto session_key = std::make_tuple(mako::LOCALHOST_CENTER_INT, dstShardIdx, id);
 
     int clusterRoleSentTo = clusterRole;
     if (sync_util::sync_logger::failed_shard_index>=0) {
-        if (clusterRole==srolis::LEARNER_CENTER_INT) // new learner
-            clusterRoleSentTo = srolis::LOCALHOST_CENTER_INT;
+        if (clusterRole==mako::LEARNER_CENTER_INT) // new learner
+            clusterRoleSentTo = mako::LOCALHOST_CENTER_INT;
         
-        if (clusterRole==srolis::LOCALHOST_CENTER_INT) {
+        if (clusterRole==mako::LOCALHOST_CENTER_INT) {
             if (dstShardIdx==sync_util::sync_logger::failed_shard_index){ // alive leaders
-                session_key = std::make_tuple(srolis::LEARNER_CENTER_INT, dstShardIdx, id);
-                clusterRoleSentTo = srolis::LEARNER_CENTER_INT;
+                session_key = std::make_tuple(mako::LEARNER_CENTER_INT, dstShardIdx, id);
+                clusterRoleSentTo = mako::LEARNER_CENTER_INT;
             }
         }
     }
@@ -282,7 +282,7 @@ inline int FastTransport::GetSession(TransportReceiver *src, uint8_t dstShardIdx
         // use the dafault port from eRPC for control path
         auto x0 = std::chrono::high_resolution_clock::now() ;
         int session_id = c->rpc->create_session(config.shard(dstShardIdx, clusterRoleSentTo).host + ":" + std::to_string(port), id);
-        size_t start_tsc = srolis::rdtsc();  // For counting timeout_ms
+        size_t start_tsc = mako::rdtsc();  // For counting timeout_ms
         while (!c->rpc->is_connected(session_id))
         {
             c->rpc->run_event_loop_once();
@@ -291,7 +291,7 @@ inline int FastTransport::GetSession(TransportReceiver *src, uint8_t dstShardIdx
         //auto x1 = std::chrono::high_resolution_clock::now() ;
         //printf("session-id open time:%d,dstShardIdx:%d,cluster:%s,shardIdx:%d,pid:%d\n",
         //    std::chrono::duration_cast<std::chrono::microseconds>(x1-x0).count(),dstShardIdx, 
-        //    srolis::convertClusterRole(clusterRoleSentTo).c_str(),TThread::get_shard_index(),
+        //    mako::convertClusterRole(clusterRoleSentTo).c_str(),TThread::get_shard_index(),
         //    TThread::getPartitionID());
         return session_id;
     }
@@ -329,7 +329,7 @@ bool FastTransport::SendRequestToShard(TransportReceiver *src,
                             &c->client.crt_req_tag->resp_msgbuf,
                             fasttransport_response,
                             reinterpret_cast<void *>(c->client.crt_req_tag));
-    size_t start_tsc = srolis::rdtsc();  // For counting timeout_ms
+    size_t start_tsc = mako::rdtsc();  // For counting timeout_ms
     while (src->Blocked() && !stop && !breakTimeout) {
         if (handleTimeout(start_tsc, (int)reqType, "SendRequestToShard")>0)
             throw 1002;
@@ -394,7 +394,7 @@ bool FastTransport::SendRequestToAll(TransportReceiver *src,
                                     reinterpret_cast<void *>(rt));
         }
     }
-    size_t start_tsc = srolis::rdtsc();  // For counting timeout_ms
+    size_t start_tsc = mako::rdtsc();  // For counting timeout_ms
     while (src->Blocked() && !stop && !breakTimeout) {
         if (handleTimeout(start_tsc, (int)reqType, "SendRequestToAll")>0)
             throw 1002;
@@ -445,7 +445,7 @@ bool FastTransport::SendBatchRequestToAll(
                                 fasttransport_response,
                                 reinterpret_cast<void *>(rt));
     }
-    size_t start_tsc = srolis::rdtsc();  // For counting timeout_ms
+    size_t start_tsc = mako::rdtsc();  // For counting timeout_ms
     while (src->Blocked() && !stop && !breakTimeout) {
         if (handleTimeout(start_tsc, (int)req_type, "SendBatchRequestToAll")>0)
             throw 1002;

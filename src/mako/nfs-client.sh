@@ -1,14 +1,14 @@
 export nfs_master="10.1.0.48"
-#mkdir -p eRPC srolis rdma-core dpdk-stable-19.11.5 logs janus rolis-eurosys2022
+#mkdir -p eRPC mako rdma-core dpdk-stable-19.11.5 logs janus rolis-eurosys2022
 #sudo umount /home/azureuser/eRPC
-#sudo umount /home/azureuser/srolis
+#sudo umount /home/azureuser/mako
 #sudo umount /home/azureuser/rdma-core
 #sudo umount /home/azureuser/dpdk-stable-19.11.5
 #sudo umount /home/azureuser/logs
 #sudo umount /home/azureuser/janus
 #sudo mount -t nfs -vvvv $nfs_master:/home/azureuser/eRPC /home/azureuser/eRPC
 #sudo mount -t nfs -vvvv $nfs_master:/home/azureuser/rolis-eurosys2022 /home/azureuser/rolis-eurosys2022
-#sudo mount -t nfs -vvvv $nfs_master:/home/azureuser/srolis /home/azureuser/srolis
+#sudo mount -t nfs -vvvv $nfs_master:/home/azureuser/mako /home/azureuser/mako
 #sudo mount -t nfs -vvvv $nfs_master:/home/azureuser/rdma-core /home/azureuser/rdma-core
 #sudo mount -t nfs -vvvv $nfs_master:/home/azureuser/dpdk-stable-19.11.5 /home/azureuser/dpdk-stable-19.11.5
 #sudo mount -t nfs -vvvv $nfs_master:/home/azureuser/logs /home/azureuser/logs

@@ -128,7 +128,7 @@ class StringAllocator{
         // Single timestamp system: write single timestamp and latency tracker
         memcpy (queueLog + pos, &latest_commit_timestamp, sizeof(uint32_t));
         pos += sizeof(uint32_t);
-        uint32_t st_time = srolis::getCurrentTimeMillis();
+        uint32_t st_time = mako::getCurrentTimeMillis();
         memcpy (queueLog + pos, &st_time, sizeof(uint32_t));
         pos += sizeof(uint32_t);
         //Warning("Paxos log watermark-2:%s",aa.c_str());
@@ -427,7 +427,7 @@ private:
         initialize();
         state_ = s_aborted;
         // init once
-        start_time = srolis::getCurrentTimeMillis();
+        start_time = mako::getCurrentTimeMillis();
     }
 
     ~Transaction();

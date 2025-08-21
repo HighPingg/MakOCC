@@ -17,7 +17,7 @@
 #include "lib/common.h"
 
 using namespace std;
-using namespace srolis;
+using namespace mako;
 bool use_fork=false;
 bool new_leader_elected=false;
 
@@ -79,7 +79,7 @@ void db_worker(size_t par_id) {
             LOG[i] = 'i';
 
         t.lap_nano();
-        long long tt_int = srolis::getCurrentTimeMillis();
+        long long tt_int = mako::getCurrentTimeMillis();
         string tt=intToString(tt_int);
         for (int i=16;i<32;i++)
             LOG[i] = tt.at(i-16);

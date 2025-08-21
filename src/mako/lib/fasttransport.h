@@ -121,9 +121,9 @@ public:
 
     // queues for helper threads
     // uint8_t ==> server_id
-    std::unordered_map<uint16_t, srolis::HelperQueue*> queue_holders;
+    std::unordered_map<uint16_t, mako::HelperQueue*> queue_holders;
     // cached queue for the helper threads
-    std::unordered_map<uint16_t, srolis::HelperQueue*> queue_holders_response;
+    std::unordered_map<uint16_t, mako::HelperQueue*> queue_holders_response;
 
     // monitor the package size
     uint64_t msg_size_req_sent;

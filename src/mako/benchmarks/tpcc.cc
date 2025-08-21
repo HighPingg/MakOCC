@@ -37,7 +37,7 @@
 
 using namespace std;
 using namespace util;
-using namespace srolis;
+using namespace mako;
 
 #define TPCC_TABLE_LIST(x) \
   x(customer) \
@@ -817,7 +817,7 @@ protected:
     //warmup connections on learner-0 (assume the leader-0 will be killed)
     //we don't do any warmup now
 #if defined(PAXOS_LIB_ENABLED)
-    if (clusterRole==srolis::LOCALHOST_CENTER_INT){ // disable it if 10 shards
+    if (clusterRole==mako::LOCALHOST_CENTER_INT){ // disable it if 10 shards
       // #if !defined(MEGA_BENCHMARK)
       // for (int i=0;i<=100;i++) {
       //    ///*printf("start - pid:%d-i:%d", TThread::getPartitionID(), i);
@@ -829,7 +829,7 @@ protected:
       //   uint32_t dstShardIndex=(1<<0);
       //   uint32_t ret_value;
       //   uint32_t req_val = i;
-      //   TThread::sclient->warmupRequest(req_val, srolis::LEARNER_CENTER_INT, ret_value, dstShardIndex);
+      //   TThread::sclient->warmupRequest(req_val, mako::LEARNER_CENTER_INT, ret_value, dstShardIndex);
       //   int ret = ret_value;
       // }
       // Warning("DONE a warmup on leader:%d to the learner-0\n", TThread::getPartitionID());
@@ -1949,7 +1949,7 @@ tpcc_worker::txn_new_order_micro_mega()
   bool isRemote = false;
   uint warehouse_id = PickWarehouseId(r, warehouse_id_start, warehouse_id_end);
 
-  int batch_size = srolis::mega_batch_size;
+  int batch_size = mako::mega_batch_size;
 
   int remote_warehouse_id = warehouse_id;
   if (NumWarehousesTotal() > 1 && 
@@ -2007,7 +2007,7 @@ tpcc_worker::txn_new_order_mega()
   // }
   const uint districtID = RandomNumber(r, 1, 10);
   const uint customerID = GetCustomerId(r); // 1-3000
-  int batch_size = srolis::mega_batch_size;
+  int batch_size = mako::mega_batch_size;
   const uint numItems = RandomNumber(r, 5, 15);
   // supplierWarehouseIDs ==> global warehouse-id
   uint itemIDs[15], supplierWarehouseIDs[15], orderQuantities[15];
@@ -2186,9 +2186,9 @@ tpcc_worker::txn_new_order_mega()
         //std::cout<<"send base:"<<base_ol_i_id<<", tid:"<<TThread::getPartitionID()<<", v-len:"<<obj_v.length()<< std::endl;
     
         // batch-read
-        for (int i=0; i<srolis::mega_batch_size; i++){
+        for (int i=0; i<mako::mega_batch_size; i++){
           // cast away const
-          //stock::value *v_s= const_cast<stock::value*>(reinterpret_cast<const stock::value*>(obj_v.data()+i*srolis::size_per_stock_value));
+          //stock::value *v_s= const_cast<stock::value*>(reinterpret_cast<const stock::value*>(obj_v.data()+i*mako::size_per_stock_value));
           stock::value *v_s= const_cast<stock::value*>(reinterpret_cast<const stock::value*>(obj_v.data()));
           if (v_s->s_quantity - ol_quantity >= 10)
             v_s->s_quantity -= ol_quantity;
@@ -2715,7 +2715,7 @@ tpcc_worker::txn_payment_micro_mega() {
   bool isRemote = false;
   uint warehouse_id = PickWarehouseId(r, warehouse_id_start, warehouse_id_end);
 
-  int batch_size = srolis::mega_batch_size;
+  int batch_size = mako::mega_batch_size;
 
   int remote_warehouse_id = warehouse_id;
   if (NumWarehousesTotal() > 1 && 
@@ -3557,8 +3557,8 @@ public:
                           int num_warehouses,
                           transport::Configuration *config,
                           abstract_db *db,
-                          srolis::HelperQueue *queue,
-                          srolis::HelperQueue *queue_response,
+                          mako::HelperQueue *queue,
+                          mako::HelperQueue *queue_response,
                           const map<string, abstract_ordered_index *> &open_tables,
                           const map<string, vector<abstract_ordered_index *>> &partitions,
                           const map<string, vector<abstract_ordered_index *>> &dummy_partitions) {
@@ -3579,7 +3579,7 @@ public:
     TThread::set_shard_index(running_shardIndex);  // the running shardIndex
     TThread::set_pid(par_id);
     TThread::set_nshards(config->nshards);
-    srolis::ShardServer *ss=new srolis::ShardServer(config->configFile,
+    mako::ShardServer *ss=new mako::ShardServer(config->configFile,
                                                     running_shardIndex, shardIdx, par_id);
     ss->Register(db, queue, queue_response, open_tables, partitions, dummy_partitions);
     ss->Run();  // it is event driven!
@@ -3610,7 +3610,7 @@ public:
                           int num_warehouses,
                           transport::Configuration *config,
                           int alpha=0) {
-    std::string local_uri = config->shard(running_shardIndex, srolis::convertCluster(cluster)).host;
+    std::string local_uri = config->shard(running_shardIndex, mako::convertCluster(cluster)).host;
     int base=5;
     int id = num_warehouses+base+alpha;
     server_transports[alpha] = new FastTransport(config->configFile,
@@ -3624,9 +3624,9 @@ public:
     for (int i=0; i<NumWarehousesTotal(); i++) {
       if (i / NumWarehouses() == running_shardIndex) continue;
       if (i%num_erpc_server==alpha){
-        auto *it = new srolis::HelperQueue(i,true);
+        auto *it = new mako::HelperQueue(i,true);
         server_transports[alpha]->c->queue_holders[i] = it;
-        auto *it_res = new srolis::HelperQueue(i,false);
+        auto *it_res = new mako::HelperQueue(i,false);
         server_transports[alpha]->c->queue_holders_response[i] = it_res;
       }
     }
@@ -3743,8 +3743,8 @@ private:
   map<string, vector<abstract_ordered_index *>> dummy_partitions;
   std::vector<std::thread> helper_threads;
   // hold pointer: identical to those c in several erpc_servers (we only have one erpc_server now)
-  std::unordered_map<uint16_t, srolis::HelperQueue*> queue_holders;
-  std::unordered_map<uint16_t, srolis::HelperQueue*> queue_holders_response;
+  std::unordered_map<uint16_t, mako::HelperQueue*> queue_holders;
+  std::unordered_map<uint16_t, mako::HelperQueue*> queue_holders_response;
 };
 
 bench_runner*

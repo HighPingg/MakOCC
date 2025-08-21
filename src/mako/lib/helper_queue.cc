@@ -8,7 +8,7 @@
 // 2023-04-17update:
 //    control command using the queues[0]
 // https://www.modernescpp.com/index.php/c-core-guidelines-be-aware-of-the-traps-of-condition-variables
-namespace srolis
+namespace mako
 {
 using namespace std;
 

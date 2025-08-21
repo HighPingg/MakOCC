@@ -1,4 +1,4 @@
-cd ~/srolis
+cd ~/mako
 make clean
 shards=$1
 MODE=perf make -j32 dbtest PAXOS_LIB_ENABLED=1 DISABLE_MULTI_VERSION=0 \

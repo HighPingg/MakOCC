@@ -32,7 +32,7 @@ static void _wan_wait_time() {
 
 #define WAN_WAIT_TIME _wan_wait_time();
 
-namespace srolis
+namespace mako
 {
   #if defined(MEGA_BENCHMARK)
     const int mega_batch_size = 100; // no more than max_batch_size?

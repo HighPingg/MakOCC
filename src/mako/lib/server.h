@@ -15,7 +15,7 @@
 
 void register_sync_util_ss(std::function<int()>);
 
-namespace srolis
+namespace mako
 {
     using namespace std;
 
@@ -87,8 +87,8 @@ namespace srolis
     public:
         ShardServer(std::string file, int clientShardIndex, int shardIndex, int par_id);
         void Register(abstract_db *db,
-                 srolis::HelperQueue *queue,
-                 srolis::HelperQueue *queue_res,
+                 mako::HelperQueue *queue,
+                 mako::HelperQueue *queue_res,
                  const map<string, abstract_ordered_index *> &open_tables,
                  const map<string, vector<abstract_ordered_index *>> &partitions,
                  const map<string, vector<abstract_ordered_index *>> &dummy_partitions);
@@ -96,7 +96,7 @@ namespace srolis
 
     protected:
         transport::Configuration config;
-        srolis::ShardReceiver *shardReceiver;
+        mako::ShardReceiver *shardReceiver;
         // create a shard-server on {clientShardIndex} to receive a client request from 
         //  a TPC-C worker thread <shardIndex, par-id>
         int clientShardIndex;
@@ -105,8 +105,8 @@ namespace srolis
 
         // store layer
         abstract_db *db;
-        srolis::HelperQueue *queue;
-        srolis::HelperQueue *queue_response;
+        mako::HelperQueue *queue;
+        mako::HelperQueue *queue_response;
         map<string, abstract_ordered_index *> open_tables;
         map<int, abstract_ordered_index *> open_tables_table_id;
         map<string, vector<abstract_ordered_index *>> partitions;

@@ -264,7 +264,7 @@ Size(const T &t)
     buf.clear(); \
     int a=nbytes(obj); \
     a=(a==1)?2:a; \
-    buf.resize(a+srolis::EXTRA_BITS_FOR_VALUE); \
+    buf.resize(a+mako::EXTRA_BITS_FOR_VALUE); \
     write((uint8_t *) buf.data(), obj); \
     return buf; \
   } \

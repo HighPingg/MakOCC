@@ -8,7 +8,7 @@
 #include "lib/common.h"
 #include "benchmarks/sto/Interface.hh"
 
-namespace srolis
+namespace mako
 {
     using namespace std;
 
@@ -23,7 +23,7 @@ namespace srolis
                              int par_id,
                              int workload_type) : config(file), cluster(cluster), shardIndex(shardIndex), par_id(par_id), workload_type(workload_type)
     {
-        clusterRole = srolis::convertCluster(cluster);
+        clusterRole = mako::convertCluster(cluster);
         std::string local_uri = config.shard(shardIndex, clusterRole).host;
         int id=par_id;
         // 0. initialize transport
@@ -37,7 +37,7 @@ namespace srolis
                                       id);
 
         // 1. initialize Client
-        client = new srolis::Client(config.configFile,
+        client = new mako::Client(config.configFile,
                                     transport,
                                     0); // 0 => generate a random client-id
 
@@ -70,7 +70,7 @@ namespace srolis
 
     void ShardClient::GetCallback(char *respBuf) {
         /* Replies back from a shard. */
-        auto *resp = reinterpret_cast<srolis::get_response_t *>(respBuf);
+        auto *resp = reinterpret_cast<mako::get_response_t *>(respBuf);
         if (waiting != NULL) {
             Promise *w = waiting;
             waiting = NULL;
@@ -82,7 +82,7 @@ namespace srolis
 
     void ShardClient::ScanCallback(char *respBuf) {
         /* Replies back from a shard. */
-        auto *resp = reinterpret_cast<srolis::scan_response_t *>(respBuf);
+        auto *resp = reinterpret_cast<mako::scan_response_t *>(respBuf);
         if (waiting != NULL) {
             Promise *w = waiting;
             waiting = NULL;
@@ -94,7 +94,7 @@ namespace srolis
 
     void ShardClient::BasicCallBack(char *respBuf) {
         /* Replies back from a shard. */
-        auto *resp = reinterpret_cast<srolis::basic_response_t *>(respBuf);
+        auto *resp = reinterpret_cast<mako::basic_response_t *>(respBuf);
         if (waiting != NULL) {
             Promise *w = waiting;
             waiting = NULL;
@@ -114,12 +114,12 @@ namespace srolis
     }
 
     void ShardClient::SendToAllStatusCallBack(char *respBuf) {
-        auto *resp = reinterpret_cast<srolis::basic_response_t *>(respBuf);
+        auto *resp = reinterpret_cast<mako::basic_response_t *>(respBuf);
         status_received.push_back((int) resp->status);
     }
 
     void ShardClient::SendToAllIntCallBack(char *respBuf) {
-        auto *resp = reinterpret_cast<srolis::get_int_response_t *>(respBuf);
+        auto *resp = reinterpret_cast<mako::get_int_response_t *>(respBuf);
         status_received.push_back((int) resp->status);
         if (resp->shard_index>=TThread::get_nshards()||resp->shard_index<0){
             Warning("In SendToAllIntCallBack, the shard_idx is overflow: %d", resp->shard_index);
@@ -276,7 +276,7 @@ namespace srolis
                         placeholders::_1),
                     bind(&ShardClient::GiveUpTimeout, this),
                 timeout);
-        //Warning("remoteGET: key:%s,table_id:%d,key_len:%d",srolis::printStringAsBit(key).c_str(),table_id,key.length());
+        //Warning("remoteGET: key:%s,table_id:%d,key_len:%d",mako::printStringAsBit(key).c_str(),table_id,key.length());
         value = promise.GetValue();
         int ret = promise.GetReply();
         if (ret>0){

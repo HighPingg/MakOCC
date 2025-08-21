@@ -35,7 +35,7 @@ class HashWrapper {
 
 // in this implementation, we rely on nfs to sync file
 // running on the shard-0 on the leader datacenter
-namespace srolis {
+namespace mako {
     class NFSSync {
 public:
         static int set_key(std::string kk, const char *value, const char*host, int port) {
@@ -71,7 +71,7 @@ public:
 
 
 /*
-namespace srolis {
+namespace mako {
     class Memcached
     {
     public:

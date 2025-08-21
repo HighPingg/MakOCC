@@ -9,7 +9,7 @@
 #include <examples/common.h>
 
 using namespace std;
-using namespace srolis;
+using namespace mako;
 
 INIT_SYNC_UTIL_VARS
 
@@ -34,8 +34,8 @@ void db_worker(size_t par_id) {
         int size = rand() % 100 + base;
         log_id++;
         
-        string id = srolis::intToString(log_id * 10 + par_id);
-        string tt = srolis::intToString(srolis::getCurrentTimeMillis());
+        string id = mako::intToString(log_id * 10 + par_id);
+        string tt = mako::intToString(mako::getCurrentTimeMillis());
         
         memcpy(LOG, id.c_str(), min(16, (int)id.size()));
         memcpy(LOG + 16, tt.c_str(), min(16, (int)tt.size()));

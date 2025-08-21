@@ -12,21 +12,21 @@ arr=(10 8 6 4 2 1)
 # tpcc
 for shards in "${arr[@]}"; do
     s="2pc_tpcc_no_rep_shard"
-    bash batch_op_zoo2.sh async_op "bash ~/srolis/kill.sh"
+    bash batch_op_zoo2.sh async_op "bash ~/mako/kill.sh"
     sleep 1
-    bash batch_op_zoo2.sh only_master "bash ~/srolis/compile.sh $shards"
+    bash batch_op_zoo2.sh only_master "bash ~/mako/compile.sh $shards"
     bash ../batch-runner.sh $shards 0 ${s}_$shards
     sleep 10
-    bash batch_op_zoo2.sh only_master "bash ~/srolis/count.sh $shards"
+    bash batch_op_zoo2.sh only_master "bash ~/mako/count.sh $shards"
 done
 
 # micro
 # for shards in "${arr[@]}"; do
 #     s="2pc_micro_no_rep_shard"
-#     bash batch_op_zoo2.sh async_op "bash ~/srolis/kill.sh"
+#     bash batch_op_zoo2.sh async_op "bash ~/mako/kill.sh"
 #     sleep 1
-#     bash batch_op_zoo2.sh only_master "bash ~/srolis/compile-m.sh $shards"
+#     bash batch_op_zoo2.sh only_master "bash ~/mako/compile-m.sh $shards"
 #     bash ../batch-runner.sh $shards 0 ${s}_$shards
 #     sleep 10
-#     bash batch_op_zoo2.sh only_master "bash ~/srolis/count-m.sh $shards"
+#     bash batch_op_zoo2.sh only_master "bash ~/mako/count-m.sh $shards"
 # done

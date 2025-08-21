@@ -50,7 +50,7 @@ main(int argc, char **argv)
   //int kSTOBatchSize = 1000;
   int kPaxosBatchSize = 50000;
   vector<string> paxos_config_file{};
-  string paxos_proc_name = srolis::LOCALHOST_CENTER;
+  string paxos_proc_name = mako::LOCALHOST_CENTER;
   string site_name = "";  // For new config format
   static std::atomic<int> end_received(0);
   static std::atomic<int> end_received_leader(0);
@@ -137,8 +137,8 @@ main(int argc, char **argv)
     case 'P':
       paxos_proc_name = string(optarg);
       cluster = paxos_proc_name;
-      clusterRole = srolis::convertCluster(cluster);
-      if (cluster.compare(srolis::LOCALHOST_CENTER) == 0) leader_config = 1;
+      clusterRole = mako::convertCluster(cluster);
+      if (cluster.compare(mako::LOCALHOST_CENTER) == 0) leader_config = 1;
       break;
     
     case 'q':
@@ -234,21 +234,21 @@ main(int argc, char **argv)
     
     // Set cluster role for compatibility
     if (site->is_leader) {
-      cluster = srolis::LOCALHOST_CENTER;
-      clusterRole = srolis::LOCALHOST_CENTER_INT;
-      paxos_proc_name = srolis::LOCALHOST_CENTER;
+      cluster = mako::LOCALHOST_CENTER;
+      clusterRole = mako::LOCALHOST_CENTER_INT;
+      paxos_proc_name = mako::LOCALHOST_CENTER;
     } else if (site->replica_idx == 1) {
-      cluster = srolis::P1_CENTER;
-      clusterRole = srolis::P1_CENTER_INT;
-      paxos_proc_name = srolis::P1_CENTER;
+      cluster = mako::P1_CENTER;
+      clusterRole = mako::P1_CENTER_INT;
+      paxos_proc_name = mako::P1_CENTER;
     } else if (site->replica_idx == 2) {
-      cluster = srolis::P2_CENTER;
-      clusterRole = srolis::P2_CENTER_INT;
-      paxos_proc_name = srolis::P2_CENTER;
+      cluster = mako::P2_CENTER;
+      clusterRole = mako::P2_CENTER_INT;
+      paxos_proc_name = mako::P2_CENTER;
     } else {
-      cluster = srolis::LEARNER_CENTER;
-      clusterRole = srolis::LEARNER_CENTER_INT;
-      paxos_proc_name = srolis::LEARNER_CENTER;
+      cluster = mako::LEARNER_CENTER;
+      clusterRole = mako::LEARNER_CENTER_INT;
+      paxos_proc_name = mako::LEARNER_CENTER;
     }
     
     Notice("Site %s: shard=%d, replica_idx=%d, is_leader=%d, cluster=%s", 
@@ -537,7 +537,7 @@ main(int argc, char **argv)
   
   register_leader_election_callback([&](int control) { // communicate with third party: Paxos
     // happens on the learner for case 0 and case 2, 3
-    uint32_t aa = srolis::getCurrentTimeMillis();
+    uint32_t aa = mako::getCurrentTimeMillis();
     Warning("Receive a control command:%d, current ms: %llu", control, aa);
     switch (control) {
 #if defined(FAIL_NEW_VERSION)
@@ -553,12 +553,12 @@ main(int argc, char **argv)
         // Single timestamp system: collect all shard watermarks and use maximum
         uint32_t max_watermark = 0;
         for (int i=0; i<nshards; i++) {
-          int clusterRoleLocal = srolis::LOCALHOST_CENTER_INT;
+          int clusterRoleLocal = mako::LOCALHOST_CENTER_INT;
           if (i==0) 
-            clusterRoleLocal = srolis::LEARNER_CENTER_INT;
-          srolis::NFSSync::wait_for_key("fvw_"+std::to_string(i), 
+            clusterRoleLocal = mako::LEARNER_CENTER_INT;
+          mako::NFSSync::wait_for_key("fvw_"+std::to_string(i), 
                                           config->shard(0, clusterRoleLocal).host.c_str(), config->mports[clusterRole]);
-          std::string w_i = srolis::NFSSync::get_key("fvw_"+std::to_string(i), 
+          std::string w_i = mako::NFSSync::get_key("fvw_"+std::to_string(i), 
                                                       config->shard(0, clusterRoleLocal).host.c_str(), 
                                                       config->mports[clusterRoleLocal]);
           std::cout<<"get fvw, " << clusterRoleLocal << ", fvw_"+std::to_string(i)<<":"<<w_i<<std::endl;
@@ -639,7 +639,7 @@ main(int argc, char **argv)
   }
 
   for (int i = 0; i < nthreads; i++) {
-    //transport::ShardAddress addr = config->shard(shardIndex, srolis::LEARNER_CENTER);
+    //transport::ShardAddress addr = config->shard(shardIndex, mako::LEARNER_CENTER);
     register_for_follower_par_id_return([&,i](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<int, int, int, int, const char *>> & un_replay_logs_) {
       //Warning("receive a register_for_follower_par_id_return, par_id:%d, slot_id:%d,len:%d",par_id, slot_id,len);
       // status: 1 => default, 2 => ending of Paxos group, 3 => fail to safety check
@@ -690,7 +690,7 @@ main(int argc, char **argv)
           if (par_id==0) {
             uint32_t local_w = sync_util::sync_logger::computeLocal();
             //Warning("update %s in phase-1 on port:%d", ("noops_phase_"+std::to_string(shardIndex)).c_str(), config->mports[clusterRole]);
-            srolis::NFSSync::set_key("noops_phase_"+std::to_string(shardIndex), 
+            mako::NFSSync::set_key("noops_phase_"+std::to_string(shardIndex), 
                                        std::to_string(local_w).c_str(),
                                        config->shard(0, clusterRole).host.c_str(),
                                        config->mports[clusterRole]);
@@ -722,9 +722,9 @@ main(int argc, char **argv)
       if (noops) {
         for (int i=0; i<nshards; i++) {
           if (i!=shardIndex && par_id==0) {
-            srolis::NFSSync::wait_for_key("noops_phase_"+std::to_string(i), 
+            mako::NFSSync::wait_for_key("noops_phase_"+std::to_string(i), 
                                             config->shard(0, clusterRole).host.c_str(), config->mports[clusterRole]);
-            std::string local_w = srolis::NFSSync::get_key("noops_phase_"+std::to_string(i), 
+            std::string local_w = mako::NFSSync::get_key("noops_phase_"+std::to_string(i), 
                                                             config->shard(0, clusterRole).host.c_str(), 
                                                             config->mports[clusterRole]);
 
@@ -823,14 +823,14 @@ main(int argc, char **argv)
           Warning("phase-1,par_id:%d DONE",par_id);
           if (par_id==0) {
             uint32_t local_w = sync_util::sync_logger::computeLocal();
-            srolis::NFSSync::set_key("noops_phase_"+std::to_string(shardIndex), 
+            mako::NFSSync::set_key("noops_phase_"+std::to_string(shardIndex), 
                                           std::to_string(local_w).c_str(),
                                           config->shard(0, clusterRole).host.c_str(), 
                                           config->mports[clusterRole]);
             sync_util::sync_logger::update_stable_timestamp(get_epoch()-1, sync_util::sync_logger::retrieveShardW()/10);
 #if defined(FAIL_NEW_VERSION)
             // Set this shard's watermark for synchronization
-            srolis::NFSSync::set_key("fvw_"+std::to_string(shardIndex), 
+            mako::NFSSync::set_key("fvw_"+std::to_string(shardIndex), 
                                        std::to_string(local_w).c_str(),
                                        config->shard(0, clusterRole).host.c_str(),
                                        config->mports[clusterRole]);
@@ -842,7 +842,7 @@ main(int argc, char **argv)
           CommitInfo commit_info = get_latest_commit_info((char *) log, len);
           timestamp = commit_info.timestamp;  // Store for return value encoding
           
-          uint32_t end_time = srolis::getCurrentTimeMillis();
+          uint32_t end_time = mako::getCurrentTimeMillis();
           //Warning("In register_for_leader_par_id_return, par_id:%d, slot_id:%d, len:%d, st: %llu, et: %llu, latency: %llu",
           //       par_id, slot_id, len, commit_info.latency_tracker, end_time, end_time-commit_info.latency_tracker);
           sync_util::sync_logger::local_timestamp_[par_id].store(commit_info.timestamp, memory_order_release) ;
@@ -851,7 +851,7 @@ main(int argc, char **argv)
           if (par_id==4){
             uint32_t vw = sync_util::sync_logger::computeLocal();
             //Warning("Update here: %llu, before:%llu",vw/10,vw);
-            advanceWatermarkTracker.push_back(std::make_pair(vw/10 /* actual watermark */, srolis::getCurrentTimeMillis()));
+            advanceWatermarkTracker.push_back(std::make_pair(vw/10 /* actual watermark */, mako::getCurrentTimeMillis()));
           }
   #endif
         }
@@ -873,7 +873,7 @@ main(int argc, char **argv)
       start_workers_tpcc(leader_config, db, nthreads, false, 1, r);
     }
     delete db;
-  } else if (cluster.compare(srolis::LEARNER_CENTER)==0) { // learner cluster
+  } else if (cluster.compare(mako::LEARNER_CENTER)==0) { // learner cluster
     if (bench_type == "tpcc") {
       abstract_db * db = tpool_mbta.getDBWrapper(nthreads)->getDB () ;
       bench_runner *r = start_workers_tpcc(1, db, nthreads, true);
@@ -918,7 +918,7 @@ main(int argc, char **argv)
 #endif
 
   if (!leader_config) { // learner or follower cluster
-    bool isLearner = cluster.compare(srolis::LEARNER_CENTER)==0 ;
+    bool isLearner = cluster.compare(mako::LEARNER_CENTER)==0 ;
     // if (bench_type == "tpcc") {
     //    abstract_db *tdb = NULL;
     //    tdb = tpool_mbta.getDBWrapper(nthreads)->getDB ();

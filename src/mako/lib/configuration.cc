@@ -15,7 +15,7 @@ namespace transport
     ShardAddress::ShardAddress(const string &host, const string &port, const int &clusterRole) :
         host(host), port(port), clusterRole(clusterRole)
     {
-        cluster = srolis::convertClusterRole(clusterRole);
+        cluster = mako::convertClusterRole(clusterRole);
     }
 
     bool ShardAddress::operator==(const ShardAddress &other) const
@@ -67,10 +67,10 @@ namespace transport
         warehouses = config["warehouses"].as<int>();
         nshards = num_shards;
         
-        for (auto cluster: {srolis::LOCALHOST_CENTER,
-                           srolis::P1_CENTER,
-                           srolis::P2_CENTER,
-                           srolis::LEARNER_CENTER}) {
+        for (auto cluster: {mako::LOCALHOST_CENTER,
+                           mako::P1_CENTER,
+                           mako::P2_CENTER,
+                           mako::LEARNER_CENTER}) {
             auto node = config[cluster];
             if (!node) continue;
             int cnt = 0;
@@ -78,7 +78,7 @@ namespace transport
                 auto item = node[i];
                 auto ip = item["ip"].as<string>();
                 auto port = item["port"].as<int>();
-                shards.push_back(ShardAddress(ip, std::to_string(port), srolis::convertCluster(cluster)));
+                shards.push_back(ShardAddress(ip, std::to_string(port), mako::convertCluster(cluster)));
                 cnt++;
             }
             if (cnt != nshards) {
@@ -86,10 +86,10 @@ namespace transport
             }
         }
         
-        mports[srolis::LOCALHOST_CENTER_INT] = config["memlocalhost"].as<int>();
-        mports[srolis::LEARNER_CENTER_INT] = config["memlearner"].as<int>();
-        mports[srolis::P1_CENTER_INT] = config["memp1"].as<int>();
-        mports[srolis::P2_CENTER_INT] = config["memp2"].as<int>();
+        mports[mako::LOCALHOST_CENTER_INT] = config["memlocalhost"].as<int>();
+        mports[mako::LEARNER_CENTER_INT] = config["memlearner"].as<int>();
+        mports[mako::P1_CENTER_INT] = config["memp1"].as<int>();
+        mports[mako::P2_CENTER_INT] = config["memp2"].as<int>();
     }
 
     void Configuration::ParseNewFormat(YAML::Node& config)
@@ -142,16 +142,16 @@ namespace transport
         
         // Parse memory ports if present
         if (config["memlocalhost"]) {
-            mports[srolis::LOCALHOST_CENTER_INT] = config["memlocalhost"].as<int>();
+            mports[mako::LOCALHOST_CENTER_INT] = config["memlocalhost"].as<int>();
         }
         if (config["memlearner"]) {
-            mports[srolis::LEARNER_CENTER_INT] = config["memlearner"].as<int>();
+            mports[mako::LEARNER_CENTER_INT] = config["memlearner"].as<int>();
         }
         if (config["memp1"]) {
-            mports[srolis::P1_CENTER_INT] = config["memp1"].as<int>();
+            mports[mako::P1_CENTER_INT] = config["memp1"].as<int>();
         }
         if (config["memp2"]) {
-            mports[srolis::P2_CENTER_INT] = config["memp2"].as<int>();
+            mports[mako::P2_CENTER_INT] = config["memp2"].as<int>();
         }
         
         Notice("Loaded %zu sites in %d shards", sites_map.size(), nshards);
@@ -164,9 +164,9 @@ namespace transport
             if (idx >= 0 && idx < (int)shard_map.size()) {
                 // Map clusterRole to replica index
                 int replica_idx = 0;
-                if (clusterRole == srolis::P1_CENTER_INT) replica_idx = 1;
-                else if (clusterRole == srolis::P2_CENTER_INT) replica_idx = 2;
-                else if (clusterRole == srolis::LEARNER_CENTER_INT) replica_idx = 3;
+                if (clusterRole == mako::P1_CENTER_INT) replica_idx = 1;
+                else if (clusterRole == mako::P2_CENTER_INT) replica_idx = 2;
+                else if (clusterRole == mako::LEARNER_CENTER_INT) replica_idx = 3;
                 
                 if (replica_idx < (int)shard_map[idx].size()) {
                     string site_name = shard_map[idx][replica_idx];
@@ -225,7 +225,7 @@ namespace transport
     {
         if (!is_new_format) {
             // For old format, check if it's "localhost"
-            return site_name == "localhost" || site_name == srolis::LOCALHOST_CENTER;
+            return site_name == "localhost" || site_name == mako::LOCALHOST_CENTER;
         }
         
         auto site = GetSiteByName(site_name);

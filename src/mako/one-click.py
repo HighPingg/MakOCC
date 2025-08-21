@@ -17,7 +17,7 @@ import time
 
 import logging
 
-home="/home/weihai/srolis"
+home="/home/weihai/mako"
 
 def signal_handler(sig, frame):
     sys.exit(0)

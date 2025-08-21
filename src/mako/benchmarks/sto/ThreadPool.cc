@@ -12,16 +12,16 @@ thread_local string obj_k;
 thread_local string obj_v;
 
 void keystore_encode3_v2(std::string& s, uint32_t x) {
-    assert(s.length()>srolis::EXTRA_BITS_FOR_VALUE);
-    memcpy ((void *)(s.data() + s.length() - srolis::EXTRA_BITS_FOR_VALUE), &x, srolis::BITS_OF_TT);
+    assert(s.length()>mako::EXTRA_BITS_FOR_VALUE);
+    memcpy ((void *)(s.data() + s.length() - mako::EXTRA_BITS_FOR_VALUE), &x, mako::BITS_OF_TT);
     // for the later on takeovering from the old leader
-    srolis::Node *header = reinterpret_cast<srolis::Node *>((char*)(s.data() + s.length() - srolis::BITS_OF_NODE));
+    mako::Node *header = reinterpret_cast<mako::Node *>((char*)(s.data() + s.length() - mako::BITS_OF_NODE));
     header->data_size = 0;
 }
 
 inline uint32_t keystore_decode3_v2(const std::string& s){
     uint32_t cid=0;
-    memcpy (&cid, (void *) (s.data () + s.length() - srolis::EXTRA_BITS_FOR_VALUE), srolis::BITS_OF_TT);
+    memcpy (&cid, (void *) (s.data () + s.length() - mako::EXTRA_BITS_FOR_VALUE), mako::BITS_OF_TT);
     return cid;
 }
 
@@ -58,8 +58,8 @@ size_t getFileContentNew_OneLogOptimized_mbta_v2(char *buffer, /* K-V pairs */
         offset += sizeof(unsigned short int) ;
 
         // 4. content of V, add an extra sizeof(uint64) bytes
-        //obj_v.assign(buffer + offset, *len_of_V + srolis::EXTRA_BITS_FOR_VALUE); // might cause coredump due to freed memory
-        obj_v.resize(*len_of_V + srolis::EXTRA_BITS_FOR_VALUE);
+        //obj_v.assign(buffer + offset, *len_of_V + mako::EXTRA_BITS_FOR_VALUE); // might cause coredump due to freed memory
+        obj_v.resize(*len_of_V + mako::EXTRA_BITS_FOR_VALUE);
         memcpy((char*)obj_v.c_str(),buffer+offset, *len_of_V);
         offset += *len_of_V;
 
@@ -78,8 +78,8 @@ size_t getFileContentNew_OneLogOptimized_mbta_v2(char *buffer, /* K-V pairs */
         }
 
         if (delete_true) {
-            obj_v.assign(1+srolis::EXTRA_BITS_FOR_VALUE, 'B'); // special flags for DELETE
-            //value = string(1+srolis::EXTRA_BITS_FOR_VALUE, 'B');  // special flags for DELETE
+            obj_v.assign(1+mako::EXTRA_BITS_FOR_VALUE, 'B'); // special flags for DELETE
+            //value = string(1+mako::EXTRA_BITS_FOR_VALUE, 'B');  // special flags for DELETE
         }
 
         // 6. encode value + cid_v
@@ -90,7 +90,7 @@ size_t getFileContentNew_OneLogOptimized_mbta_v2(char *buffer, /* K-V pairs */
         int try_cnt = 1 ;
         while (1) {
             try {
-                //Warning("Info of KV: # of K: %d, # of V: %d, table_id: %d, is_deleted: %d,key:%s", *len_of_K, obj_v.length(), *table_id, delete_true,srolis::printStringAsBit(obj_k).c_str());
+                //Warning("Info of KV: # of K: %d, # of V: %d, table_id: %d, is_deleted: %d,key:%s", *len_of_K, obj_v.length(), *table_id, delete_true,mako::printStringAsBit(obj_k).c_str());
                 void *txn = db->new_txn(0, arena, buf, abstract_db::HINT_DEFAULT);
                 abstract_ordered_index *table_index = db->open_index(*table_id) ;
                 table_index->put_mbta(txn, obj_k, cmpFunc2_v2, obj_v);

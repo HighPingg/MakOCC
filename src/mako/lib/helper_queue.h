@@ -7,7 +7,7 @@
 
 #define HELPER_QUEUE_SIZE 100
 
-namespace srolis
+namespace mako
 {
 using namespace std;
 

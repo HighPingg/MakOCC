@@ -42,7 +42,7 @@ Transaction::epoch_state __attribute__((aligned(128))) Transaction::global_epoch
     1, 0, TransactionTid::increment_value, true
 };
 __thread Transaction *TThread::txn = nullptr;
-__thread srolis::ShardClient *TThread::sclient = nullptr;
+__thread mako::ShardClient *TThread::sclient = nullptr;
 __thread HashWrapper *TThread::tprops = nullptr;
 std::function<void(threadinfo_t::epoch_type)> Transaction::epoch_advance_callback;
 #if defined(SIMPLE_WORKLOAD)
@@ -496,7 +496,7 @@ bool Transaction::try_commit(bool no_paxos) {
 
 #if defined(TRACKING_ROLLBACK)
         if (get_current_term()==0) {
-            rollbacks_tracker[srolis::getCurrentTimeMillis()].push_back(tid_unique_);
+            rollbacks_tracker[mako::getCurrentTimeMillis()].push_back(tid_unique_);
         }
 #endif
     }
@@ -628,9 +628,9 @@ inline void Transaction::serialize_util(unsigned nwriteset, bool on_remote, int 
 
 #if defined(TRACKING_LATENCY)
     if (timestamp%1000==0&&TThread::getPartitionID()==4){
-        uint32_t cur_time = srolis::getCurrentTimeMillis();
+        uint32_t cur_time = mako::getCurrentTimeMillis();
         if (cur_time - start_time>= 5*1000 && cur_time - start_time <= 15*1000){ // time duration: [5,15]
-            sample_transaction_tracker[timestamp] = srolis::getCurrentTimeMillis() ;
+            sample_transaction_tracker[timestamp] = mako::getCurrentTimeMillis() ;
         }
     }
 #endif
@@ -690,8 +690,8 @@ inline void Transaction::serialize_util(unsigned nwriteset, bool on_remote, int 
         // 5. copy the length of value and content of value
         if (hasInsertOp(it)) {
             versioned_str_struct *vvx = (*it).key<versioned_str_struct *>();
-            assert(vvx->length() > srolis::EXTRA_BITS_FOR_VALUE);
-            len_of_V = vvx->length() - srolis::EXTRA_BITS_FOR_VALUE;
+            assert(vvx->length() > mako::EXTRA_BITS_FOR_VALUE);
+            len_of_V = vvx->length() - mako::EXTRA_BITS_FOR_VALUE;
             memcpy(array + w, (char *) &len_of_V, sizeof(unsigned short));
             w += sizeof(unsigned short);
 
@@ -704,8 +704,8 @@ inline void Transaction::serialize_util(unsigned nwriteset, bool on_remote, int 
                 len_of_V = 1;
             }else{
                 vvx = (*it).template write_value<std::string>();
-                assert(vvx.length() > srolis::EXTRA_BITS_FOR_VALUE);
-                len_of_V = vvx.length() - srolis::EXTRA_BITS_FOR_VALUE;
+                assert(vvx.length() > mako::EXTRA_BITS_FOR_VALUE);
+                len_of_V = vvx.length() - mako::EXTRA_BITS_FOR_VALUE;
             }
             memcpy(array + w, (char *) &len_of_V, sizeof(unsigned short));
             w += sizeof(unsigned short);
@@ -740,7 +740,7 @@ inline void Transaction::serialize_util(unsigned nwriteset, bool on_remote, int 
           pos += sizeof(uint32_t);
           
           // 8. tracking purpose, the latency to commit a huge log
-          uint32_t st_time = srolis::getCurrentTimeMillis();
+          uint32_t st_time = mako::getCurrentTimeMillis();
           memcpy (queueLog + pos, &st_time, sizeof(uint32_t));
           pos += sizeof(uint32_t);
 

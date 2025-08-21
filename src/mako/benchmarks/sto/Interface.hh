@@ -40,7 +40,7 @@ public:
     static __thread int skipBeforeRemotePayment;
     static __thread Transaction* txn;
     // for each worker thread, it has a erpc client to issue erpc request
-    static __thread srolis::ShardClient* sclient;
+    static __thread mako::ShardClient* sclient;
     // for each worker thread, we set a global variable to ease programming
     // this structure is relatively slow, please avoid visiting it frequently
     static __thread HashWrapper* tprops;

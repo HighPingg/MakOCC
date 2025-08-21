@@ -1,4 +1,4 @@
-cd ~/srolis
+cd ~/mako
 make clean
 shards=$1
 # for COCO, we have to use a single timestamp and compress all vectors into a single timestamp

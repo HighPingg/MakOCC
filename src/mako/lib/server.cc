@@ -20,7 +20,7 @@ void register_sync_util_ss(std::function<int()> cb) {
     ss_callback_ = cb;
 }
 
-namespace srolis
+namespace mako
 {
     using namespace std;
 
@@ -221,7 +221,7 @@ namespace srolis
                 try {
                     int base_ol_i_id = k_s->i_id;
                     item_micro::key k_s_new(*k_s);
-                    for (int i=0; i<srolis::mega_batch_size; i++) {
+                    for (int i=0; i<mako::mega_batch_size; i++) {
                         k_s_new.i_id = base_ol_i_id + i;
                         open_tables_table_id[table_id]->shard_put(EncodeK(obj_key0, k_s_new), obj_v);
                     }
@@ -259,7 +259,7 @@ namespace srolis
                 try {
                     int base_ol_i_id = k_s->s_i_id;
                     stock::key k_s_new(*k_s);
-                    for (int i=0; i<srolis::mega_batch_size; i++) {
+                    for (int i=0; i<mako::mega_batch_size; i++) {
                         k_s_new.s_i_id = base_ol_i_id + i;
                         open_tables_table_id[table_id]->shard_put(EncodeK(obj_key0, k_s_new), obj_v);
                     }
@@ -407,7 +407,7 @@ namespace srolis
                 bool ret = true;
                 int base_ol_i_id = k_s->i_id;
                 item_micro::key k_s_new(*k_s); 
-                for (int i=0; i<srolis::mega_batch_size; i++) {
+                for (int i=0; i<mako::mega_batch_size; i++) {
                    k_s_new.i_id = base_ol_i_id + i;
                    ret = open_tables_table_id[req->table_id]->shard_get(EncodeK(obj_key0, k_s_new), obj_v);
                    memcpy((char*)c_v.c_str()+offset,obj_v.c_str(),value_size);
@@ -433,7 +433,7 @@ namespace srolis
         resp->status = (current_term > req->req_nr % 10)? ErrorCode::ABORT: status; // If a reqest comes from old epoch, reject it.;
         resp->req_nr = req->req_nr;
         resp->len = c_v.length();
-        //Warning("the remoteGET,len:%d,table_id:%d,keys:%s,key_len:%d,val_len:%d",obj_v.length(),req->table_id,srolis::printStringAsBit(obj_key0).c_str(),req->len,obj_v.length());
+        //Warning("the remoteGET,len:%d,table_id:%d,keys:%s,key_len:%d,val_len:%d",obj_v.length(),req->table_id,mako::printStringAsBit(obj_key0).c_str(),req->len,obj_v.length());
         memcpy(resp->value, c_v.c_str(), c_v.length());
     }
 
@@ -446,8 +446,8 @@ namespace srolis
         stock::key v_s_temp;
         const stock::key *k_s = Decode(obj_key0, v_s_temp);
         //std::cout<<"HandleGetRequest, base:"<<k_s->s_i_id<<", table-id:"<<req->table_id<<std::endl;
-        //int tol_len = srolis::mega_batch_size* srolis::size_per_stock_value;  
-        int tol_len = 1* srolis::size_per_stock_value;  
+        //int tol_len = mako::mega_batch_size* mako::size_per_stock_value;  
+        int tol_len = 1* mako::size_per_stock_value;  
         std::string c_v;
         int offset = 0;
         c_v.resize(tol_len);
@@ -458,11 +458,11 @@ namespace srolis
                 bool ret = true;
                 int base_ol_i_id = k_s->s_i_id;
                 stock::key k_s_new(*k_s); 
-                for (int i=0; i<srolis::mega_batch_size; i++) {
+                for (int i=0; i<mako::mega_batch_size; i++) {
                    k_s_new.s_i_id = base_ol_i_id + i;
                    ret = open_tables_table_id[req->table_id]->shard_get(EncodeK(obj_key0, k_s_new), obj_v);
-                   memcpy((char*)c_v.c_str()+offset,obj_v.c_str(),srolis::size_per_stock_value);
-                   //offset += srolis::size_per_stock_value;
+                   memcpy((char*)c_v.c_str()+offset,obj_v.c_str(),mako::size_per_stock_value);
+                   //offset += mako::size_per_stock_value;
                    offset = 0;
                 }
                 // abort here,
@@ -486,7 +486,7 @@ namespace srolis
         resp->status = (current_term > req->req_nr % 10)? ErrorCode::ABORT: status; // If a reqest comes from old epoch, reject it.;
         resp->req_nr = req->req_nr;
         resp->len = c_v.length();
-        //Warning("the remoteGET,len:%d,table_id:%d,keys:%s,key_len:%d,val_len:%d",obj_v.length(),req->table_id,srolis::printStringAsBit(obj_key0).c_str(),req->len,obj_v.length());
+        //Warning("the remoteGET,len:%d,table_id:%d,keys:%s,key_len:%d,val_len:%d",obj_v.length(),req->table_id,mako::printStringAsBit(obj_key0).c_str(),req->len,obj_v.length());
         memcpy(resp->value, c_v.c_str(), c_v.length());
     }
 
@@ -528,7 +528,7 @@ namespace srolis
         resp->status = (current_term > req->req_nr % 10)? ErrorCode::ABORT: status; // If a reqest comes from old epoch, reject it.;
         resp->req_nr = req->req_nr;
         resp->len = obj_v.length();
-        //Warning("the remoteGET,len:%d,table_id:%d,keys:%s,key_len:%d,val_len:%d",obj_v.length(),req->table_id,srolis::printStringAsBit(obj_key0).c_str(),req->len,obj_v.length());
+        //Warning("the remoteGET,len:%d,table_id:%d,keys:%s,key_len:%d,val_len:%d",obj_v.length(),req->table_id,mako::printStringAsBit(obj_key0).c_str(),req->len,obj_v.length());
         memcpy(resp->value, obj_v.c_str(), obj_v.length());
 #endif
     }
@@ -542,12 +542,12 @@ namespace srolis
                                                                                                          clientShardIndex(clientShardIndex),
                                                                                                          par_id(par_id)
     {
-        shardReceiver = new srolis::ShardReceiver(file);
+        shardReceiver = new mako::ShardReceiver(file);
     }
 
     void ShardServer::Register(abstract_db *dbX,
-                               srolis::HelperQueue *queueX,
-                               srolis::HelperQueue *queueY,
+                               mako::HelperQueue *queueX,
+                               mako::HelperQueue *queueY,
                                const map<string, abstract_ordered_index *> &open_tablesX,
                                const map<string, vector<abstract_ordered_index *>> &partitionsX,
                                const map<string, vector<abstract_ordered_index *>> &dummy_partitionsX)

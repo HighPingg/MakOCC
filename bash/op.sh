@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-repos="srolis"  # repos name, default
+repos="mako"  # repos name, default
 workdir="~"  # we default put our repos under the root
 
 # util

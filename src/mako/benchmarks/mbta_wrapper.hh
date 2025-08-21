@@ -13,15 +13,15 @@
 #include "benchmarks/tpcc.h"
 
 // We have to do it on the coordinator instead of transaction.cc, because it only has a local copy of the readSet;
-#define GET_NODE_POINTER(val,len) reinterpret_cast<srolis::Node *>((char*)(val+len-srolis::BITS_OF_NODE));
-#define GET_NODE_EXTRA_POINTER(val,len) reinterpret_cast<uint32_t *>((char*)(val+len-srolis::EXTRA_BITS_FOR_VALUE));
+#define GET_NODE_POINTER(val,len) reinterpret_cast<mako::Node *>((char*)(val+len-mako::BITS_OF_NODE));
+#define GET_NODE_EXTRA_POINTER(val,len) reinterpret_cast<uint32_t *>((char*)(val+len-mako::EXTRA_BITS_FOR_VALUE));
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
 #if defined(FAIL_NEW_VERSION)
 // control_mode==4, If a value is in the old epoch while this transaction is from the new epoch,  if not stable, we put it in the queue.
 // If control_mode==4
 #define UPDATE_VS(val,len) \
-  srolis::Node *header = GET_NODE_POINTER(val,len); \
+  mako::Node *header = GET_NODE_POINTER(val,len); \
   uint32_t *shardtimestamp = GET_NODE_EXTRA_POINTER(val,len); \
   /* Update single max timestamp in readset */ \
   TThread::txn->maxTimestampReadSet = MAX(TThread::txn->maxTimestampReadSet, header->timestamp); \
@@ -33,7 +33,7 @@
   }
 #else
 #define UPDATE_VS(val,len) \
-  srolis::Node *header = GET_NODE_POINTER(val,len); \
+  mako::Node *header = GET_NODE_POINTER(val,len); \
   /* Update single max timestamp in readset */ \
   TThread::txn->maxTimestampReadSet = MAX(TThread::txn->maxTimestampReadSet, header->timestamp); \
   if (control_mode==1){ \
@@ -1002,7 +1002,7 @@ public:
       size_t old = __sync_fetch_and_add(&partition_id, 1);
       TThread::set_pid (old);
 
-      TThread::sclient = new srolis::ShardClient(config->configFile,
+      TThread::sclient = new mako::ShardClient(config->configFile,
                                                  cluster,
                                                  shardIndex,
                                                  old,

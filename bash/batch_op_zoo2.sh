@@ -110,14 +110,14 @@ elif [ $cmd == 'install22.04' ]; then
     for i in "${!hosts_pub[@]}"
     do
         host=${hosts_pub[$i]}
-        sshpass -p$passwd ssh -o StrictHostKeyChecking=no rolis@$host "bash ~/srolis/install22.04.sh" &
+        sshpass -p$passwd ssh -o StrictHostKeyChecking=no rolis@$host "bash ~/mako/install22.04.sh" &
     done
 
 elif [ $cmd == 'install20.04' ]; then
     for i in "${!hosts_pub[@]}"
     do
         host=${hosts_pub[$i]}
-        sshpass -p$passwd ssh -o StrictHostKeyChecking=no rolis@$host "bash ~/srolis/install.sh" &
+        sshpass -p$passwd ssh -o StrictHostKeyChecking=no rolis@$host "bash ~/mako/install.sh" &
     done
 
 elif [ $cmd == 'op' ]; then
@@ -171,9 +171,9 @@ EOF
 elif [ $cmd == 'cluster_nfs' ]; then
 op=$(cat <<-EOF
 echo 'export nfs_master="$master"
-mkdir -p eRPC srolis rdma-core $dpdk_version logs janus-tapir calvin janus depfast-ae D2PC
+mkdir -p eRPC mako rdma-core $dpdk_version logs janus-tapir calvin janus depfast-ae D2PC
 sudo umount /home/rolis/eRPC
-sudo umount /home/rolis/srolis
+sudo umount /home/rolis/mako
 sudo umount /home/rolis/D2PC
 sudo umount /home/rolis/rdma-core
 sudo umount /home/rolis/janus-tapir
@@ -184,7 +184,7 @@ sudo umount /home/rolis/janus
 sudo umount /home/rolis/depfast-ae
 sudo mount -t nfs -vvvv $master:/home/rolis/eRPC /home/rolis/eRPC
 sudo mount -t nfs -vvvv $master:/home/rolis/D2PC /home/rolis/D2PC
-sudo mount -t nfs -vvvv $master:/home/rolis/srolis /home/rolis/srolis
+sudo mount -t nfs -vvvv $master:/home/rolis/mako /home/rolis/mako
 sudo mount -t nfs -vvvv $master:/home/rolis/rdma-core /home/rolis/rdma-core
 sudo mount -t nfs -vvvv $master:/home/rolis/janus-tapir /home/rolis/janus-tapir
 sudo mount -t nfs -vvvv $master:/home/rolis/calvin /home/rolis/calvin

@@ -15,7 +15,7 @@ do
   ip=${servers[$i]}
   thds=28
   echo "ssh to reqest to $ip"
-  cmd="ulimit -n 10000;cd srolis;bash bash/shard.sh 10 $i $thds 20 localhost > ./results/localhost-u-10-$thds-$i.log 2>&1 &"
+  cmd="ulimit -n 10000;cd mako;bash bash/shard.sh 10 $i $thds 20 localhost > ./results/localhost-u-10-$thds-$i.log 2>&1 &"
   ssh $ip "$cmd" &
   sleep 0.2
 done

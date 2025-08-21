@@ -139,7 +139,7 @@ int main() {
             string key = "hello";
             string actual_value = "world!";
             // Mako requires padding for internal versioning
-            string padded_value = actual_value + string(srolis::EXTRA_BITS_FOR_VALUE, '\0');
+            string padded_value = actual_value + string(mako::EXTRA_BITS_FOR_VALUE, '\0');
             table->put(txn, key, StringWrapper(padded_value));
             
             // Commit the transaction

@@ -16,7 +16,7 @@
     int sync_util::sync_logger::nthreads = 0; \
     bool sync_util::sync_logger::worker_running = false; \
     bool sync_util::sync_logger::is_leader = true; \
-    string sync_util::sync_logger::cluster = srolis::LOCALHOST_CENTER; \
+    string sync_util::sync_logger::cluster = mako::LOCALHOST_CENTER; \
     transport::Configuration *sync_util::sync_logger::config = nullptr; \
     bool sync_util::sync_logger::toLeader = false ; \
     std::mutex sync_util::sync_logger::m ; \

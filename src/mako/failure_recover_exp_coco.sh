@@ -1,7 +1,7 @@
 
 shards=4
 make paxos
-bash $HOME/srolis/compile-coco.sh $shards 
+bash $HOME/mako/compile-coco.sh $shards 
 
 functionRep() {
     # 4 shards with replication

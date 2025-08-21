@@ -7,7 +7,7 @@
 #include "lib/promise.h"
 #include "lib/common.h"
 
-namespace srolis
+namespace mako
 {
     using namespace std;
 
@@ -40,11 +40,11 @@ namespace srolis
     protected:
         transport::Configuration config;
         Transport *transport;
-        srolis::Client *client;
+        mako::Client *client;
         int shardIndex;
         std::string cluster;
         int clusterRole;
-        int par_id;  // in srolis, each worker thread has a partition
+        int par_id;  // in mako, each worker thread has a partition
         Promise *waiting; // waiting thread
         int tid;
         int workload_type;  // 0. simpleShards (debug), 1. tpcc

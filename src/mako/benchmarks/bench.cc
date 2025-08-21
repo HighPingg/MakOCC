@@ -62,7 +62,7 @@ int backoff_aborted_transaction = 0;
 int use_hashtable = 0;
 
 // par_id ==> shardClient
-std::unordered_map<int, srolis::ShardClient*> shardClientAll;
+std::unordered_map<int, mako::ShardClient*> shardClientAll;
 // par_id ==> txn
 std::unordered_map<int, Transaction*> shardTxnAll;
 
@@ -176,10 +176,10 @@ bench_worker::run()
         vector<uint32_t> fvw(nshards);
         for (int i=0; i<nshards; i++) {
           // it should get shard-0 from the learner
-          int clusterRoleLocal = srolis::LOCALHOST_CENTER_INT;
+          int clusterRoleLocal = mako::LOCALHOST_CENTER_INT;
           if (i==0) 
-            clusterRoleLocal = srolis::LEARNER_CENTER_INT;
-          std::string w_i = srolis::NFSSync::get_key("fvw_"+std::to_string(i), 
+            clusterRoleLocal = mako::LEARNER_CENTER_INT;
+          std::string w_i = mako::NFSSync::get_key("fvw_"+std::to_string(i), 
                                                       config->shard(0, clusterRoleLocal).host.c_str(), 
                                                       config->mports[clusterRoleLocal]);
           std::cout<<"get fvw, " << clusterRoleLocal << ", fvw_"+std::to_string(i)<<":"<<w_i<<std::endl;
@@ -434,12 +434,12 @@ bench_runner::run()
 
   if (f_mode == 0) {
     std::cout << "--------------Finish loading data and wait for others completing load phase ------------" << std::endl;
-    srolis::NFSSync::set_key("load_phase_"+std::to_string(shardIndex), "DONE", config->shard(0, clusterRole).host.c_str(), config->mports[clusterRole]);
+    mako::NFSSync::set_key("load_phase_"+std::to_string(shardIndex), "DONE", config->shard(0, clusterRole).host.c_str(), config->mports[clusterRole]);
 
     // wait for all other shards to complete
     for (int i=0; i<config->nshards; i++) {
       if (i!=shardIndex) {
-        srolis::NFSSync::wait_for_key("load_phase_"+std::to_string(i), config->shard(0, clusterRole).host.c_str(), config->mports[clusterRole]);
+        mako::NFSSync::wait_for_key("load_phase_"+std::to_string(i), config->shard(0, clusterRole).host.c_str(), config->mports[clusterRole]);
       }
     }
 

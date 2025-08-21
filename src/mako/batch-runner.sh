@@ -65,7 +65,7 @@ runtime=30
 for i in "${!leaders[@]}"
 do
   ip=${leaders[$i]}
-  cmd="ulimit -n 20000;cd srolis;bash bash/shard.sh $n_partitions $i $thds $runtime localhost > ./results/exp-localhost-v14-$n_partitions-$thds-$i-$ver.log 2>&1 &"
+  cmd="ulimit -n 20000;cd mako;bash bash/shard.sh $n_partitions $i $thds $runtime localhost > ./results/exp-localhost-v14-$n_partitions-$thds-$i-$ver.log 2>&1 &"
   echo "ssh to reqest to $ip, $cmd"
   sshpass -p$passwd ssh -o StrictHostKeyChecking=no rolis@$ip "$cmd" &
   sleep 0.3
@@ -75,7 +75,7 @@ if [ "$isreplicated" -eq 1 ]; then
     for i in "${!learners[@]}"
     do
     ip=${learners[$i]}
-    cmd="ulimit -n 20000;cd srolis;bash bash/shard.sh $n_partitions $i $thds $runtime learner > ./results/exp-learner-v14-$n_partitions-$thds-$i-$ver.log 2>&1 &"
+    cmd="ulimit -n 20000;cd mako;bash bash/shard.sh $n_partitions $i $thds $runtime learner > ./results/exp-learner-v14-$n_partitions-$thds-$i-$ver.log 2>&1 &"
     echo "ssh to reqest to $ip, $cmd"
     sshpass -p$passwd ssh -o StrictHostKeyChecking=no rolis@$ip "$cmd" &
     sleep 0.3
@@ -84,7 +84,7 @@ if [ "$isreplicated" -eq 1 ]; then
     for i in "${!p1s[@]}"
     do
     ip=${p1s[$i]}
-    cmd="ulimit -n 20000;cd srolis;bash bash/shard.sh $n_partitions $i $thds $runtime p1 > ./results/exp-p1-v14-$n_partitions-$thds-$i-$ver.log 2>&1 &"
+    cmd="ulimit -n 20000;cd mako;bash bash/shard.sh $n_partitions $i $thds $runtime p1 > ./results/exp-p1-v14-$n_partitions-$thds-$i-$ver.log 2>&1 &"
     echo "ssh to reqest to $ip, $cmd"
     sshpass -p$passwd ssh -o StrictHostKeyChecking=no rolis@$ip "$cmd" &
     sleep 0.3
@@ -93,7 +93,7 @@ if [ "$isreplicated" -eq 1 ]; then
     for i in "${!p2s[@]}"
     do
     ip=${p2s[$i]}
-    cmd="ulimit -n 20000;cd srolis;bash bash/shard.sh $n_partitions $i $thds $runtime p2 > ./results/exp-p2-v14-$n_partitions-$thds-$i-$ver.log 2>&1 &"
+    cmd="ulimit -n 20000;cd mako;bash bash/shard.sh $n_partitions $i $thds $runtime p2 > ./results/exp-p2-v14-$n_partitions-$thds-$i-$ver.log 2>&1 &"
     echo "ssh to reqest to $ip, $cmd"
     sshpass -p$passwd ssh -o StrictHostKeyChecking=no rolis@$ip "$cmd" &
     sleep 0.3
@@ -124,10 +124,10 @@ fi
 let sTime=$thds+20
 sleep $sTime
 #nnn=$thds
-#cat ~/srolis/results/localhost-u-$n_partitions-$nnn-*.log | ag 'NewOrder_remote_commit_latency'
-#cat ~/srolis/results/localhost-u-$n_partitions-$nnn-*.log | ag 'agg_throughput'
-#cat ~/srolis/results/localhost-u-$n_partitions-$nnn-*.log | ag 'agg_throughput' | wc -l
-#cat ~/srolis/results/localhost-u-$n_partitions-$nnn-*.log | ag 'agg_throughput'| awk '{sum += $2} END {print sum}'
+#cat ~/mako/results/localhost-u-$n_partitions-$nnn-*.log | ag 'NewOrder_remote_commit_latency'
+#cat ~/mako/results/localhost-u-$n_partitions-$nnn-*.log | ag 'agg_throughput'
+#cat ~/mako/results/localhost-u-$n_partitions-$nnn-*.log | ag 'agg_throughput' | wc -l
+#cat ~/mako/results/localhost-u-$n_partitions-$nnn-*.log | ag 'agg_throughput'| awk '{sum += $2} END {print sum}'
 ##echo ""
 
 done

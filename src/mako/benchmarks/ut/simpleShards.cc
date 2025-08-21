@@ -18,7 +18,7 @@
 #include "benchmarks/sto/sync_util.hh"
 #include "benchmarks/common3.h"
 using namespace std;
-using namespace srolis;
+using namespace mako;
 
 INIT_SYNC_UTIL_VARS
 
@@ -75,7 +75,7 @@ public:
 
     void client() {
         std::string obj_v;
-        TThread::sclient = new srolis::ShardClient(config->configFile,
+        TThread::sclient = new mako::ShardClient(config->configFile,
                                                  "localhost",
                                                  client_shardIndex,
                                                  par_id,
@@ -102,8 +102,8 @@ public:
     void static helper_server(
                           transport::Configuration *config,
                           abstract_db *db,
-                          srolis::HelperQueue *queue,
-                          srolis::HelperQueue *queue_response,
+                          mako::HelperQueue *queue,
+                          mako::HelperQueue *queue_response,
                           const map<string, abstract_ordered_index *> &open_tables) {
         scoped_db_thread_ctx ctx(db, true);  // invoke thread_init
         TThread::set_id(2);
@@ -114,7 +114,7 @@ public:
         TThread::set_shard_index(server_shardIndex);
         map<string, vector<abstract_ordered_index *>> partitions;
         map<string, vector<abstract_ordered_index *>> dummy_partitions;
-        srolis::ShardServer *ss=new srolis::ShardServer(config->configFile,
+        mako::ShardServer *ss=new mako::ShardServer(config->configFile,
                                                         client_shardIndex, 
                                                         server_shardIndex, par_id);
         ss->Register(db, queue, queue_response, open_tables, partitions, dummy_partitions);
@@ -132,7 +132,7 @@ public:
 
     void static erpc_server(std::string cluster,
                           transport::Configuration *config) {
-        std::string local_uri = config->shard(server_shardIndex, srolis::convertCluster(cluster)).host;
+        std::string local_uri = config->shard(server_shardIndex, mako::convertCluster(cluster)).host;
         int id = num_warehouses;
         server_transport = new FastTransport(config->configFile,
                                     local_uri,  // local_uri
@@ -142,9 +142,9 @@ public:
                                     0,          // numa node
                                     server_shardIndex, // used to get basic port
                                     id);
-        auto *it = new srolis::HelperQueue();
+        auto *it = new mako::HelperQueue();
         server_transport->c->queue_holders[0] = it;
-        auto *it_res = new srolis::HelperQueue();
+        auto *it_res = new mako::HelperQueue();
         server_transport->c->queue_holders_response[0] = it_res;
         server_transport->Run(); 
     }
@@ -183,8 +183,8 @@ protected:
     std::string txn_obj_buf;
     inline void *txn_buf() { return (void *) txn_obj_buf.data(); }
 
-    std::unordered_map<uint8_t, srolis::HelperQueue*> queue_holders;
-    std::unordered_map<uint8_t, srolis::HelperQueue*> queue_holders_response;
+    std::unordered_map<uint8_t, mako::HelperQueue*> queue_holders;
+    std::unordered_map<uint8_t, mako::HelperQueue*> queue_holders_response;
 };
 
 int main(int argv, char **args) {

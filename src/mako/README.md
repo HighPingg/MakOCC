@@ -11,7 +11,7 @@ https://aju9mlkupe.feishu.cn/docx/SafudaEdzostF6xFXr2cGgxBnpg?from=from_copylink
 2. We need to disable warmup in benchmarks/tpcc.cc, otherwise too many erpc connections are created!
 3. Run examples 
 ```
-bash ~/srolis/bash/run_x.sh
+bash ~/mako/bash/run_x.sh
 ```
 
 ### Failure recovery for COCO
@@ -25,10 +25,10 @@ If there is a shard failure with a timeout 10seconds with the epoch `e`, other h
 rm ./results/*.log
 # run this on shard leader 0 to kill the process at the time
 ifconfig |grep '172.19.0.33'
-ifconfig |grep '172.19.0.33' && cd ~/srolis && rm results/*.log && bash kill-coco.sh
+ifconfig |grep '172.19.0.33' && cd ~/mako && rm results/*.log && bash kill-coco.sh
 
 # To kill all running servers 
-bash batch_op_zoo2.sh async_op "bash ~/srolis/kill.sh"
+bash batch_op_zoo2.sh async_op "bash ~/mako/kill.sh"
 
 # compile
 make paxos

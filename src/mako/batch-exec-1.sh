@@ -68,12 +68,12 @@ allHosts_pub=( "${leaders_pub[@]}" "${learners_pub[@]}" "${p1s_pub[@]}" "${p2s_p
 #sudo dpdk-devbind --status
 #ssh-keygen -f "/home/azureuser/.ssh/known_hosts" -R "127.0.0.1"
 #sudo systemctl status systemd-resolved
-cmd1="bash /home/azureuser/srolis/initial.sh" 
+cmd1="bash /home/azureuser/mako/initial.sh" 
 cmd2=""
-cmd3="bash ~/srolis/bash/op.sh kill"
+cmd3="bash ~/mako/bash/op.sh kill"
 cmd4=""
 cmd5="bash ~/nfs.sh"
-cmd6="bash ~/srolis/nfs-client.sh" # re-mount, for jauns or other new folders
+cmd6="bash ~/mako/nfs-client.sh" # re-mount, for jauns or other new folders
 cmd7=""
 
 for i in "${!allHosts[@]}"

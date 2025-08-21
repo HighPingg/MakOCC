@@ -13,7 +13,7 @@ void register_sync_util_sc(std::function<int()> cb) {
 /**
  * IMPORTANT: one transaction has to be handle by the same partition-id thread on all shards
  */
-namespace srolis
+namespace mako
 {
     using namespace std;
 

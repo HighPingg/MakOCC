@@ -38,7 +38,7 @@ public:
             void *txn = db->new_txn(0, arena, txn_buf());
             std::string key = "test_key_" + std::to_string(i);
             std::string value = "test_value_" + std::to_string(i) + 
-                               std::string(srolis::EXTRA_BITS_FOR_VALUE, 'B');
+                               std::string(mako::EXTRA_BITS_FOR_VALUE, 'B');
             try {
                 table->put(txn, key, StringWrapper(value));
                 db->commit_txn(txn);
@@ -99,7 +99,7 @@ public:
             void *txn = db->new_txn(0, arena, txn_buf());
             scoped_str_arena s_arena(arena);
             std::string key = "overwrite_key";
-            std::string value = "initial_2000" + std::string(srolis::EXTRA_BITS_FOR_VALUE, 'B');
+            std::string value = "initial_2000" + std::string(mako::EXTRA_BITS_FOR_VALUE, 'B');
             try {
                 table->put(txn, key, StringWrapper(value));
                 db->commit_txn(txn);
@@ -114,7 +114,7 @@ public:
             void *txn = db->new_txn(0, arena, txn_buf());
             scoped_str_arena s_arena(arena);
             std::string key = "overwrite_key";
-            std::string value = "updated_1000" + std::string(srolis::EXTRA_BITS_FOR_VALUE, 'B');
+            std::string value = "updated_1000" + std::string(mako::EXTRA_BITS_FOR_VALUE, 'B');
             try {
                 table->put(txn, key, StringWrapper(value));
                 db->commit_txn(txn);
@@ -128,7 +128,7 @@ public:
             void *txn = db->new_txn(0, arena, txn_buf());
             scoped_str_arena s_arena(arena);
             std::string key = "overwrite_key";
-            std::string value = "updated_0000" + std::string(srolis::EXTRA_BITS_FOR_VALUE, 'B');
+            std::string value = "updated_0000" + std::string(mako::EXTRA_BITS_FOR_VALUE, 'B');
             try {
                 table->put(txn, key, StringWrapper(value));
                 db->commit_txn(txn);

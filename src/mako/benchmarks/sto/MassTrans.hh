@@ -550,7 +550,7 @@ public:
   #define RESET_NODE_BY_E(e) \
     char *oldval_str=(char*)e->data();\
     int oldval_len=e->length();\
-    srolis::Node* header = reinterpret_cast<srolis::Node*>(oldval_str+oldval_len-srolis::BITS_OF_NODE);\
+    mako::Node* header = reinterpret_cast<mako::Node*>(oldval_str+oldval_len-mako::BITS_OF_NODE);\
     header->timestamp = 0; \
     header->data_size = 0; 
 
@@ -576,7 +576,7 @@ public:
         return;
       }
 
-      string v=string(1+srolis::EXTRA_BITS_FOR_VALUE, 'B');
+      string v=string(1+mako::EXTRA_BITS_FOR_VALUE, 'B');
       MultiVersionValue::mvInstall(isInsert, isDelete,
                                    v,
                                    e,
