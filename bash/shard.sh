@@ -6,7 +6,7 @@ nshard=$1
 shard=$2
 trd=$3
 let up=trd+3
-cluster=${5:-localhost}
+cluster=${4:-localhost}
 #sudo cgset -r cpuset.mems=0 cpulimit
 #sudo cgset -r cpuset.cpus=0-$up cpulimit
 mkdir -p results
@@ -15,8 +15,8 @@ path=$(pwd)/src/mako
 # sudo gdb --args 
 # sudo strace -f -c
 # sudo gdb --args cgexec -g cpuset:cpulimit
-sudo ./build/dbtest \
-                                       --num-threads $trd  \
-                                      --shard-index $shard --shard-config $path/config/local-shards$nshard-warehouses$trd.yml \
-                                      -F config/1leader_2followers/paxos$trd\_shardidx$shard.yml  -F config/occ_paxos.yml \
-                                       -P $cluster 
+./build/dbtest \
+                --num-threads $trd  \
+                --shard-index $shard --shard-config $path/config/local-shards$nshard-warehouses$trd.yml \
+                -F config/1leader_2followers/paxos$trd\_shardidx$shard.yml -F config/occ_paxos.yml \
+                -P $cluster 
