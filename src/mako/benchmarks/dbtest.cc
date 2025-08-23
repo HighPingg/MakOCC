@@ -7,37 +7,10 @@ using namespace util;
 int
 main(int argc, char **argv)
 {
-  verbose = 1; 
-  enable_parallel_loading = 0;
-  pin_cpus = 1;
-  slow_exit = 0;
-  retry_aborted_transaction = 1;
-  backoff_aborted_transaction = 0;
-  num_erpc_server = 2;
-  runtime = 30;
-  run_mode = RUNMODE_TIME; // always use RUNMODE_TIME
-  txn_flags = 1;
-  no_reset_counters = 0;
-  use_hashtable = 0;
-
-
   abstract_db *db = NULL;
-  //void (*test_fn)(abstract_db *, int argc, char **argv) = NULL;
-  string bench_type = "tpcc";
-  string db_type = "mbta";
   string basedir = "./tmp";
   size_t numa_memory = mako::parse_memory_spec("1G");
   string bench_opts = "--new-order-fast-id-gen";
-  int nofsync = 0;
-  int do_compress = 0;
-  int fake_writes = 0;
-  int disable_gc = 0;
-  int disable_snapshots = 0;
-  string stats_server_sockfile = "";
-
-
-  vector<string> logfiles;
-  vector<vector<unsigned>> assignments;
 
   int leader_config = 0;
   int kPaxosBatchSize = 50000;
@@ -150,34 +123,6 @@ main(int argc, char **argv)
            site_name.c_str(), site->shard_id, site->replica_idx, site->is_leader, cluster.c_str());
   }
 
-  if (bench_type == "tpcc") {
-    workload_type = 1;
-  }
-
-  if (do_compress && logfiles.empty()) {
-    cerr << "[ERROR] --log-compress specified without logging enabled" << endl;
-    return 1;
-  }
-
-  if (fake_writes && logfiles.empty()) {
-    cerr << "[ERROR] --log-fake-writes specified without logging enabled" << endl;
-    return 1;
-  }
-
-  if (nofsync && logfiles.empty()) {
-    cerr << "[ERROR] --log-nofsync specified without logging enabled" << endl;
-    return 1;
-  }
-
-  if (fake_writes && nofsync) {
-    cerr << "[WARNING] --log-nofsync has no effect with --log-fake-writes enabled" << endl;
-  }
-
-#ifndef ENABLE_EVENT_COUNTERS
-  if (!stats_server_sockfile.empty()) {
-    cerr << "[WARNING] --stats-server-sockfile with no event counters enabled is useless" << endl;
-  }
-#endif
 
   // initialize the numa allocator
   if (numa_memory > 0) {
@@ -187,58 +132,9 @@ main(int argc, char **argv)
     ::allocator::Initialize(nthreads, maxpercpu);
   }
 
-  const set<string> can_persist({"ndb-proto2"});
-  if (!logfiles.empty() && !can_persist.count(db_type)) {
-    cerr << "[ERROR] benchmark " << db_type
-         << " does not have persistence implemented" << endl;
-    return 1;
-  }
+db = new mbta_wrapper; // on the leader replica
 
-#ifdef PROTO2_CAN_DISABLE_GC
-  const set<string> has_gc({"ndb-proto1", "ndb-proto2"});
-  if (disable_gc && !has_gc.count(db_type)) {
-    cerr << "[ERROR] benchmark " << db_type
-         << " does not have gc to disable" << endl;
-    return 1;
-  }
-#else
-  if (disable_gc) {
-    cerr << "[ERROR] macro PROTO2_CAN_DISABLE_GC was not set, cannot disable gc" << endl;
-    return 1;
-  }
-#endif
-
-#ifdef PROTO2_CAN_DISABLE_SNAPSHOTS
-  const set<string> has_snapshots({"ndb-proto2"});
-  if (disable_snapshots && !has_snapshots.count(db_type)) {
-    cerr << "[ERROR] benchmark " << db_type
-         << " does not have snapshots to disable" << endl;
-    return 1;
-  }
-#else
-  if (disable_snapshots) {
-    cerr << "[ERROR] macro PROTO2_CAN_DISABLE_SNAPSHOTS was not set, cannot disable snapshots" << endl;
-    return 1;
-  }
-#endif
-
-  if (db_type == "mbta") {
-    db = new mbta_wrapper; // on the leader replica
-  } else
-    ALWAYS_ASSERT(false);
-
-#ifdef DEBUG
-  cerr << "WARNING: benchmark built in DEBUG mode!!!" << endl;
-#endif
-
-#ifdef CHECK_INVARIANTS
-  cerr << "WARNING: invariant checking is enabled - should disable for benchmark" << endl;
-#ifdef PARANOID_CHECKING
-  cerr << "  *** Paranoid checking is enabled ***" << endl;
-#endif
-#endif
-
-  if (verbose) {
+if (true) {
     const unsigned long ncpus = coreid::num_cpus_online();
     cerr << "Database Benchmark:"                           << endl;
     cerr << "  pid: " << getpid()                           << endl;
@@ -248,10 +144,6 @@ main(int argc, char **argv)
     cerr << "  shardIndex  : " << shardIndex                << endl;
     cerr << "  paxos_proc_name  : " << paxos_proc_name      << endl;
     cerr << "  nshards     : " << nshards                   << endl;
-    if (run_mode == RUNMODE_TIME)
-      cerr << "  runtime     : " << runtime                 << endl;
-    else
-      cerr << "  ops/worker  : " << ops_per_worker          << endl;
 #ifdef USE_VARINT_ENCODING
     cerr << "  var-encode  : yes"                           << endl;
 #else
@@ -274,8 +166,6 @@ main(int argc, char **argv)
     }
 
     cerr << "system properties:" << endl;
-    //cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize() << endl;
-    //cerr << "  btree_leaf_node_size    : " << concurrent_btree::LeafNodeSize() << endl;
 
 #ifdef TUPLE_PREFETCH
     cerr << "  tuple_prefetch          : yes" << endl;
@@ -296,11 +186,6 @@ main(int argc, char **argv)
                                cluster,
                                config);
   
-  if (leader_config && !stats_server_sockfile.empty()) {
-    stats_server *srvr = new stats_server(stats_server_sockfile);
-    thread(&stats_server::serve_forever, srvr).detach();
-  }
-
   int argc_paxos = 18;
   int k = 0;
   char *argv_paxos[argc_paxos];
@@ -347,10 +232,8 @@ main(int argc, char **argv)
   if (!leader_config) { // initialize tables on follower replicas
     abstract_db * db = tpool_mbta.getDBWrapper(nthreads)->getDB () ;
     // pre-initialize all tables to avoid table creation data race
-    if (likely(workload_type == 1)) { // tpcc or microbenchmark, table_ids [1,11*nthreads+1] at most 
-      for (int i=0;i<((size_t)scale_factor)*11+1;i++) {
-        db->open_index(i+1);
-      }
+    for (int i=0;i<((size_t)scale_factor)*11+1;i++) {
+      db->open_index(i+1);
     }
   }
 
@@ -746,17 +629,13 @@ main(int argc, char **argv)
 #endif // END OF PAXOS_LIB_ENABLED
 
   if (leader_config) { // leader cluster
-    if (bench_type == "tpcc") {
-      bench_runner *r = start_workers_tpcc(leader_config, db, nthreads);
-      start_workers_tpcc(leader_config, db, nthreads, false, 1, r);
-    }
+    bench_runner *r = start_workers_tpcc(leader_config, db, nthreads);
+    start_workers_tpcc(leader_config, db, nthreads, false, 1, r);
     delete db;
   } else if (cluster.compare(mako::LEARNER_CENTER)==0) { // learner cluster
-    if (bench_type == "tpcc") {
-      abstract_db * db = tpool_mbta.getDBWrapper(nthreads)->getDB () ;
-      bench_runner *r = start_workers_tpcc(1, db, nthreads, true);
-      modeMonitor(db, nthreads, r) ;
-    }
+    abstract_db * db = tpool_mbta.getDBWrapper(nthreads)->getDB () ;
+    bench_runner *r = start_workers_tpcc(1, db, nthreads, true);
+    modeMonitor(db, nthreads, r) ;
   }
 
 #if defined(TRACKING_LATENCY)
@@ -797,12 +676,6 @@ main(int argc, char **argv)
 
   if (!leader_config) { // learner or follower cluster
     bool isLearner = cluster.compare(mako::LEARNER_CENTER)==0 ;
-    // if (bench_type == "tpcc") {
-    //    abstract_db *tdb = NULL;
-    //    tdb = tpool_mbta.getDBWrapper(nthreads)->getDB ();
-    //    modeMonitor(tdb, nthreads) ;
-    // }
-
     // in case, the Paxos streams on other side is terminated, 
     // not need for all no-ops for the final termination
     while (!(end_received.load() > 0 ||end_received_leader.load() > 0)) {

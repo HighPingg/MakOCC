@@ -37,26 +37,26 @@ using namespace std;
 using namespace util;
 
 size_t nthreads = 1;  // number of TPC-C worker threads per shard
-size_t num_erpc_server = 1; // number of eRPC servers
+size_t num_erpc_server = 2; // number of eRPC servers
 double scale_factor = 1.0; // number of warehouses (same as nthreads) per shard
 size_t nshards = 1;
 size_t shardIndex = 0;
 string cluster = "localhost";
 int clusterRole = 0;
-size_t workload_type = 1; // 0. simpleShards (debug), 1. tpcc
+size_t workload_type = 1; // 0. simpleShards (Debug), 1. tpcc/microbenchmark
 transport::Configuration *config=nullptr; // config file
 volatile bool running = true;
 volatile int control_mode = 0; // 0--> default, 1--> pausing db worker threads, 2 --> resume db worker threads
-int verbose = 0;
-uint64_t txn_flags = 0;
+int verbose = 1;
+uint64_t txn_flags = 1;
 uint64_t runtime = 30;
 volatile int runtime_plus = 0; // pre-undetermined running time
 uint64_t ops_per_worker = 0;
 int run_mode = RUNMODE_TIME;
 int enable_parallel_loading = false;
-int pin_cpus = 0;
+int pin_cpus = 1;
 int slow_exit = 0;
-int retry_aborted_transaction = 0;
+int retry_aborted_transaction = 1;
 int no_reset_counters = 0;
 int backoff_aborted_transaction = 0;
 int use_hashtable = 0;
