@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  ubuntu22-build:
+    build:
+      context: .
+      dockerfile: Dockerfile.ubuntu22
+    image: mako-build:ubuntu22
+    container_name: mako-ubuntu22
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    command: /bin/bash -c "cd /workspace && rm -rf build && mkdir -p build && cd build && cmake .. -DPAXOS_LIB_ENABLED=1 -DMICRO_BENCHMARK=0 && make -j32 dbtest"
+    
+  ubuntu22-dev:
+    image: mako-build:ubuntu22
+    container_name: mako-ubuntu22-dev
+    volumes:
+      - .:/workspace
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    command: /bin/bash
