@@ -10,7 +10,7 @@ sudo apt-get --assume-yes install libyaml-cpp-dev libyaml-cpp0.3-dev
 sudo apt-get --assume-yes install -y libjemalloc-dev
 sudo apt-get --assume-yes install libgoogle-perftools-dev
 sudo apt-get --assume-yes install -y libaio-dev # remove?
-sudo apt-get --assume-yes install build-essential libssl-dev libffi-dev python-dev
+sudo apt-get --assume-yes install build-essential libssl-dev libffi-dev python3-dev
 sudo apt-get --assume-yes install silversearcher-ag
 sudo apt-get --assume-yes install numactl
 sudo apt-get --assume-yes install autoconf
@@ -41,4 +41,4 @@ sudo apt-get --assume-yes install ninja-build pkg-config valgrind python3-dev cy
 
 sudo apt-get --assume-yes install gh cargo openssh-server
 # for rusty-cpp-checker
-sudo apt-get install llvm-14-dev libclang-14-dev 
+sudo apt-get --assume-yes install llvm-14-dev libclang-14-dev libz3-dev

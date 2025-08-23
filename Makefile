@@ -33,6 +33,10 @@ clean:
 	# Clean Rust library
 	@echo "Cleaning Rust library..."
 	@cd rust-lib && cargo clean 2>/dev/null || true
+	# Clean rusty-cpp
+	@rm -rf third-party/rustycpp/target || true
+
+
 
 
 rebuild: clean all
