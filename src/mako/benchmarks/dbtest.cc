@@ -7,27 +7,39 @@ using namespace util;
 int
 main(int argc, char **argv)
 {
+  verbose = 1; 
+  enable_parallel_loading = 0;
+  pin_cpus = 1;
+  slow_exit = 0;
+  retry_aborted_transaction = 1;
+  backoff_aborted_transaction = 0;
+  num_erpc_server = 2;
+  runtime = 30;
+  run_mode = RUNMODE_TIME; // always use RUNMODE_TIME
+  txn_flags = 1;
+  no_reset_counters = 0;
+  use_hashtable = 0;
+
+
   abstract_db *db = NULL;
   //void (*test_fn)(abstract_db *, int argc, char **argv) = NULL;
   string bench_type = "tpcc";
   string db_type = "mbta";
-  char *curdir = get_current_dir_name();
-  string basedir = curdir;
-  string bench_opts;
-  size_t numa_memory = 0;
-  free(curdir);
-  int saw_run_spec = 0;
+  string basedir = "./tmp";
+  size_t numa_memory = mako::parse_memory_spec("1G");
+  string bench_opts = "--new-order-fast-id-gen";
   int nofsync = 0;
   int do_compress = 0;
   int fake_writes = 0;
   int disable_gc = 0;
   int disable_snapshots = 0;
+  string stats_server_sockfile = "";
+
+
   vector<string> logfiles;
   vector<vector<unsigned>> assignments;
-  string stats_server_sockfile;
 
   int leader_config = 0;
-  //int kSTOBatchSize = 1000;
   int kPaxosBatchSize = 50000;
   vector<string> paxos_config_file{};
   string paxos_proc_name = mako::LOCALHOST_CENTER;
@@ -41,42 +53,16 @@ main(int argc, char **argv)
   while (1) {
     static struct option long_options[] =
     {
-      {"verbose"                    , no_argument       , &verbose                   , 1}   ,
-      {"parallel-loading"           , no_argument       , &enable_parallel_loading   , 1}   ,
-      {"pin-cpus"                   , no_argument       , &pin_cpus                  , 1}   ,
-      {"slow-exit"                  , no_argument       , &slow_exit                 , 1}   ,
-      {"retry-aborted-transactions" , no_argument       , &retry_aborted_transaction , 1}   ,
-      {"backoff-aborted-transactions" , no_argument     , &backoff_aborted_transaction , 1}   ,
-      {"bench"                      , required_argument , 0                          , 'b'} ,
-      {"scale-factor"               , required_argument , 0                          , 's'} ,
       {"num-threads"                , required_argument , 0                          , 't'} ,
-      {"num-erpc-server"            , required_argument , 0                          , 'e'} ,
       {"shard-index"                , required_argument , 0                          , 'g'} ,
       {"shard-config"               , required_argument , 0                          , 'q'} ,
-      {"db-type"                    , required_argument , 0                          , 'd'} ,
-      {"basedir"                    , required_argument , 0                          , 'B'} ,
-      {"txn-flags"                  , required_argument , 0                          , 'f'} ,
-      {"runtime"                    , required_argument , 0                          , 'r'} ,
-      {"ops-per-worker"             , required_argument , 0                          , 'n'} ,
-      {"bench-opts"                 , required_argument , 0                          , 'o'} ,
-      {"numa-memory"                , required_argument , 0                          , 'm'} , // implies --pin-cpus
-      {"logfile"                    , required_argument , 0                          , 'l'} ,
-      {"assignment"                 , required_argument , 0                          , 'a'} ,
-      {"log-nofsync"                , no_argument       , &nofsync                   , 1}   ,
-      {"log-compress"               , no_argument       , &do_compress               , 1}   ,
-      {"log-fake-writes"            , no_argument       , &fake_writes               , 1}   ,
-      {"disable-gc"                 , no_argument       , &disable_gc                , 1}   ,
-      {"disable-snapshots"          , no_argument       , &disable_snapshots         , 1}   ,
-      {"stats-server-sockfile"      , required_argument , 0                          , 'x'} ,
-      {"no-reset-counters"          , no_argument       , &no_reset_counters         , 1}   ,
-      {"use-hashtable"		          , no_argument	,     &use_hashtable	             , 1}   ,
       {"paxos-config"               , required_argument , 0                          , 'F'} ,
+      {"paxos-proc-name"               , required_argument , 0                       , 'P'} ,
       {"site-name"                  , required_argument , 0                          , 'N'} , // New option
-      //{"sto-batch-size"             , optional_argument , 0                          , 'S'},
       {0, 0, 0, 0}
     };
     int option_index = 0;
-    int c = getopt_long(argc, argv, "b:s:t:d:B:f:r:n:o:m:l:a:x:g:q:F:P:N:S", long_options, &option_index);
+    int c = getopt_long(argc, argv, "t:g:q:F:P:N:", long_options, &option_index);
     if (c == -1)
       break;
 
@@ -87,21 +73,9 @@ main(int argc, char **argv)
       abort();
       break;
 
-    case 'b':
-      bench_type = optarg;
-      break;
-
-    case 's':
-      scale_factor = strtod(optarg, NULL);
-      ALWAYS_ASSERT(scale_factor > 0.0);
-      break;
-
-    // case 'S':
-    //   kSTOBatchSize = strtoul(optarg, NULL, 10);
-    //   break;
-
     case 't':
       nthreads = strtoul(optarg, NULL, 10);
+      scale_factor = strtod(optarg, NULL);
       ALWAYS_ASSERT(nthreads > 0);
       break;
 
@@ -126,65 +100,8 @@ main(int argc, char **argv)
       nshards = config->nshards;
       break;
 
-    case 'd':
-      db_type = optarg;
-      break;
-
-    case 'B':
-      basedir = optarg;
-      break;
-
-    case 'f':
-      txn_flags = strtoul(optarg, NULL, 10);
-      break;
-
     case 'F':
       paxos_config_file.push_back(optarg);
-      break;
-
-    case 'r':
-      ALWAYS_ASSERT(!saw_run_spec);
-      saw_run_spec = 1;
-      runtime = strtoul(optarg, NULL, 10);
-      ALWAYS_ASSERT(runtime > 0);
-      run_mode = RUNMODE_TIME;
-      break;
-
-    case 'n':
-      ALWAYS_ASSERT(!saw_run_spec);
-      saw_run_spec = 1;
-      ops_per_worker = strtoul(optarg, NULL, 10);
-      ALWAYS_ASSERT(ops_per_worker > 0);
-      run_mode = RUNMODE_OPS;
-
-    case 'o':
-      bench_opts = optarg;
-      break;
-
-    case 'm':
-      {
-        pin_cpus = 1;
-        const size_t m = mako::parse_memory_spec(optarg);
-        ALWAYS_ASSERT(m > 0);
-        numa_memory = m;
-      }
-      break;
-
-    case 'l':
-      logfiles.emplace_back(optarg);
-      break;
-
-    case 'a':
-      assignments.emplace_back(
-          ParseCSVString<unsigned, RangeAwareParser<unsigned>>(optarg));
-      break;
-
-    case 'x':
-      stats_server_sockfile = optarg;
-      break;
-
-    case 'e':
-      num_erpc_server = strtoul(optarg, NULL, 10);
       break;
 
     case '?':
@@ -195,8 +112,6 @@ main(int argc, char **argv)
       abort();
     }
   }
-
-  verbose = 1;
 
   // Handle new configuration format with site-name
   if (!site_name.empty() && config != nullptr) {
@@ -328,21 +243,11 @@ main(int argc, char **argv)
     cerr << "Database Benchmark:"                           << endl;
     cerr << "  pid: " << getpid()                           << endl;
     cerr << "settings:"                                     << endl;
-    cerr << "  par-loading : " << enable_parallel_loading   << endl;
-    cerr << "  pin-cpus    : " << pin_cpus                  << endl;
-    cerr << "  slow-exit   : " << slow_exit                 << endl;
-    cerr << "  retry-txns  : " << retry_aborted_transaction << endl;
-    cerr << "  backoff-txns: " << backoff_aborted_transaction << endl;
-    cerr << "  bench       : " << bench_type                << endl;
-    cerr << "  scale       : " << scale_factor              << endl;
     cerr << "  num-cpus    : " << ncpus                     << endl;
     cerr << "  num-threads : " << nthreads                  << endl;
     cerr << "  shardIndex  : " << shardIndex                << endl;
     cerr << "  paxos_proc_name  : " << paxos_proc_name      << endl;
     cerr << "  nshards     : " << nshards                   << endl;
-    cerr << "  db-type     : " << db_type                   << endl;
-    cerr << "  basedir     : " << basedir                   << endl;
-    cerr << "  txn-flags   : " << hexify(txn_flags)         << endl;
     if (run_mode == RUNMODE_TIME)
       cerr << "  runtime     : " << runtime                 << endl;
     else
@@ -367,11 +272,6 @@ main(int argc, char **argv)
     } else {
       cerr << "  numa-memory : disabled"                    << endl;
     }
-    cerr << "  logfiles : " << logfiles                     << endl;
-    cerr << "  assignments : " << assignments               << endl;
-    cerr << "  disable-gc : " << disable_gc                 << endl;
-    cerr << "  disable-snapshots : " << disable_snapshots   << endl;
-    cerr << "  stats-server-sockfile: " << stats_server_sockfile << endl;
 
     cerr << "system properties:" << endl;
     //cerr << "  btree_internal_node_size: " << concurrent_btree::InternalNodeSize() << endl;

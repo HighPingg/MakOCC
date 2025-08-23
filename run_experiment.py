@@ -94,11 +94,11 @@ class ExperimentRunner:
             print(f"Config file {config_file} not found")
         return "127.0.0.1"  # fallback
 
-    def run_experiment(self, shards, threads, runtime, is_replicated):
+    def run_experiment(self, shards, threads, is_replicated):
         """Run experiment with or without replication"""
         mode = "REPLICATED" if is_replicated else "NON-REPLICATED"
         print(f"\n=== {mode} EXPERIMENT ===")
-        print(f"Shards: {shards}, Threads: {threads}, Runtime: {runtime}s")
+        print(f"Shards: {shards}, Threads: {threads}")
         
         self.add_section_break(f"{mode} EXPERIMENT")
         
@@ -116,7 +116,7 @@ class ExperimentRunner:
             
             for role in roles:
                 host = self.get_host_for_role(shard, role)
-                cmd = f"bash bash/shard.sh {shards} {shard} {threads} {runtime} {role}"
+                cmd = f"bash bash/shard.sh {shards} {shard} {threads} {role}"
                 log_file = f"./results/{role}-{shard}.log"
                 
                 # Always use SSH for consistency
@@ -181,7 +181,6 @@ class ExperimentRunner:
         replicated = "repl" if params.get('is_replicated', False) else "norepl"
         threads = params.get('threads', 0)
         micro = "micro" if params.get('is_micro', False) else "tpcc"
-        runtime = params.get('runtime', 0)
         
         suffix = ""
         if is_cleanup:
@@ -191,7 +190,7 @@ class ExperimentRunner:
         elif skip_compile:
             suffix = "_no-compile"
         
-        return f"experiment_s{shards}_{replicated}_t{threads}_{micro}_r{runtime}s{suffix}.sh"
+        return f"experiment_s{shards}_{replicated}_t{threads}_{micro}_{suffix}.sh"
 
     def save_commands_script(self, filename=None, is_cleanup=False, only_compile=False, skip_compile=False):
         """Save all commands to a bash script with descriptive header"""
@@ -213,7 +212,6 @@ class ExperimentRunner:
 #   - Replication: {'Enabled (Paxos)' if params.get('is_replicated', False) else 'Disabled'}
 #   - Benchmark: {'Microbenchmark' if params.get('is_micro', False) else 'TPC-C'}
 #   - Threads per shard: {params.get('threads', 'N/A')}
-#   - Runtime: {params.get('runtime', 'N/A')} seconds
 #   - Mode: {'Dry run' if self.dry_run else 'Executed'}
 #
 # This script performs the following steps:
@@ -245,11 +243,8 @@ def main():
     parser.add_argument("--micro", action="store_true", 
                        help="Use microbenchmark instead of TPC-C")
     
-    # Runtime parameters
     parser.add_argument("--threads", type=int, default=6, 
                        help="Number of worker threads per shard (default: 6)")
-    parser.add_argument("--runtime", type=int, default=30, 
-                       help="Runtime in seconds (default: 30)")
     
     # Mode selection
     parser.add_argument("--dry-run", action="store_true", 
@@ -283,7 +278,6 @@ def main():
             'is_replicated': args.replicated,
             'is_micro': args.micro,
             'threads': args.threads,
-            'runtime': args.runtime
         }
         
         if args.cleanup_only:
@@ -306,7 +300,7 @@ def main():
                     print("Compilation failed!")
                     return 1
             
-            runner.run_experiment(args.shards, args.threads, args.runtime, args.replicated)
+            runner.run_experiment(args.shards, args.threads, args.replicated)
         
         # Always save commands to file
         runner.save_commands_script(is_cleanup=args.cleanup_only, 
