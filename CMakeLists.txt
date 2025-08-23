@@ -702,7 +702,7 @@ set(BORROW_CHECK_FATAL ON CACHE BOOL "Make borrow check failures fatal" FORCE)
 
 # Apply borrow checking to dbtest target
 if(ENABLE_BORROW_CHECKING)
-    # add_borrow_check_target(dbtest)
+    add_borrow_check_target(dbtest)
 endif()
 
 add_apps(paxos_async_commit_test src/mako/benchmarks/paxos_async_commit_test.cc)
