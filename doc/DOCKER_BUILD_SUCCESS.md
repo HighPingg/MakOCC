@@ -18,7 +18,7 @@
 # Command used:
 docker run --rm -v $(pwd):/workspace mako-build:ubuntu22 bash -c \
   'cd /workspace && rm -rf build && mkdir -p build && cd build && \
-   cmake .. -DPAXOS_LIB_ENABLED=1 -DMICRO_BENCHMARK=0 -DSHARDS=3 && \
+   cmake ..  && \
    make -j32 dbtest'
 ```
 
@@ -44,7 +44,7 @@ docker run --rm -v $(pwd):/workspace ubuntu:22.04 bash -c \
    bash apt_packages.sh && \
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && \
    source \$HOME/.cargo/env && cd /workspace && \
-   mkdir -p build && cd build && cmake .. -DPAXOS_LIB_ENABLED=1 && make -j32 dbtest"
+   mkdir -p build && cd build && cmake .. && make -j32 dbtest"
 ```
 
 ### Reusable Container Method
@@ -55,7 +55,7 @@ sg docker -c "docker build -f Dockerfile.ubuntu22 -t mako-build:ubuntu22 ."
 # Build dbtest
 sg docker -c "docker run --rm -v $(pwd):/workspace mako-build:ubuntu22 bash -c \
   'cd /workspace && rm -rf build && mkdir -p build && cd build && \
-   cmake .. -DPAXOS_LIB_ENABLED=1 && make -j32 dbtest'"
+   cmake .. && make -j32 dbtest'"
 ```
 
 ## Compatibility Confirmed

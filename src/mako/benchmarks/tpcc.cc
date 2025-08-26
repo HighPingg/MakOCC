@@ -34,6 +34,7 @@
 #include "benchmarks/sto/multiversion.hh"
 #include "atomic"
 #include <chrono>
+#include "benchmarks/benchmark_config.h"
 
 using namespace std;
 using namespace util;
@@ -815,9 +816,7 @@ protected:
     rcu::s_instance.fault_region();
 
     //warmup connections on learner-0 (assume the leader-0 will be killed)
-    //we don't do any warmup now
-#if defined(PAXOS_LIB_ENABLED)
-    if (BenchmarkConfig::getInstance().getClusterRole()==mako::LOCALHOST_CENTER_INT){ // disable it if 10 shards
+    //if (BenchmarkConfig::getInstance().getClusterRole()==mako::LOCALHOST_CENTER_INT){ // disable it if 10 shards
       // #if !defined(MEGA_BENCHMARK)
       // for (int i=0;i<=100;i++) {
       //    ///*printf("start - pid:%d-i:%d", TThread::getPartitionID(), i);
@@ -834,8 +833,7 @@ protected:
       // }
       // Warning("DONE a warmup on leader:%d to the learner-0\n", TThread::getPartitionID());
       // #endif
-    }
-#endif
+    //}
   }
 
   inline ALWAYS_INLINE string &
@@ -3759,25 +3757,26 @@ tpcc_do_test(abstract_db *db, int argc, char **argv, int run = 0, bench_runner *
   if (run==1){
     ((tpcc_bench_runner*)rc)->run();
     ((tpcc_bench_runner*)rc)->cleanup();
-#if defined(PAXOS_LIB_ENABLED)
-    Warning("######--------------###### send endLlogs #####---------------######");
-    std::string endLogInd = "";
-    for (int i = 0; i < BenchmarkConfig::getInstance().getNthreads(); i++)
-        add_log_to_nc((char *)endLogInd.c_str(), 0, i);
+    
+    if (BenchmarkConfig::getInstance().getIsReplicated()) {
+      Warning("######--------------###### send endLlogs #####---------------######");
+      std::string endLogInd = "";
+      for (int i = 0; i < BenchmarkConfig::getInstance().getNthreads(); i++)
+          add_log_to_nc((char *)endLogInd.c_str(), 0, i);
 
-    // vector<std::thread> wait_threads;
-    // for (int i = 0; i < BenchmarkConfig::getInstance().getNthreads(); i++)
-    // {
-    //     wait_threads.push_back(std::thread([i]() {
-    //        std::cout << "starting wait for par_id: " << i << std::endl;
-    //        wait_for_submit(i); 
-    //     }));
-    // }
-    // for (auto &th : wait_threads)
-    // {
-    //     th.join();
-    // }
-#endif
+      // vector<std::thread> wait_threads;
+      // for (int i = 0; i < BenchmarkConfig::getInstance().getNthreads(); i++)
+      // {
+      //     wait_threads.push_back(std::thread([i]() {
+      //        std::cout << "starting wait for par_id: " << i << std::endl;
+      //        wait_for_submit(i); 
+      //     }));
+      // }
+      // for (auto &th : wait_threads)
+      // {
+      //     th.join();
+      // }
+    }
     return rc; // rc is same object as r below
   }
   if (TThread::get_is_micro()) {

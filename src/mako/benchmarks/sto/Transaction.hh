@@ -18,6 +18,7 @@
 #include "deptran/s_main.h"
 #include "benchmarks/sto/Interface.hh"
 #include "benchmarks/sto/sync_util.hh"
+#include "benchmarks/benchmark_config.h"
 
 #ifndef STO_PROFILE_COUNTERS
 #define STO_PROFILE_COUNTERS 0
@@ -115,7 +116,7 @@ class StringAllocator{
   }
 
   ~StringAllocator() {
- #if defined(PAXOS_LIB_ENABLED)
+    if (!BenchmarkConfig::getInstance().getIsReplicated()) {return;}
     size_t pos = 0;
     unsigned char *queueLog = getLogOnly(pos);
     assert(pos <= max_bytes_size) ;
@@ -135,7 +136,6 @@ class StringAllocator{
         add_log_to_nc((char *)queueLog, pos, TThread::getPartitionID (), batch_size);
     }
     freeMemory();
-  #endif
   };
 
 //   static size_t kSizeLimit;

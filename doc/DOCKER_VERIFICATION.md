@@ -29,7 +29,7 @@ All Docker tests have been successfully completed:
 
 ### Quick Build (Your Original Command - Still Works)
 ```bash
-docker run --rm -v $(pwd):/workspace ubuntu:22.04 bash -c "apt-get update && apt-get install -y sudo curl && bash apt_packages.sh && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source \$HOME/.cargo/env && cd /workspace && mkdir -p build && cd build && cmake .. -DPAXOS_LIB_ENABLED=1 && make -j32 dbtest"
+docker run --rm -v $(pwd):/workspace ubuntu:22.04 bash -c "apt-get update && apt-get install -y sudo curl && bash apt_packages.sh && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y && source \$HOME/.cargo/env && cd /workspace && mkdir -p build && cd build && cmake .. && make -j32 dbtest"
 ```
 
 ### Reusable Container Method
@@ -45,7 +45,7 @@ sg docker -c "./docker_build.sh build-image"
 
 2. **Build dbtest in the container**:
 ```bash
-sg docker -c "docker run --rm -v $(pwd):/workspace mako-build:ubuntu22 bash -c 'cd /workspace && rm -rf build && mkdir -p build && cd build && cmake .. -DPAXOS_LIB_ENABLED=1 && make -j32 dbtest'"
+sg docker -c "docker run --rm -v $(pwd):/workspace mako-build:ubuntu22 bash -c 'cd /workspace && rm -rf build && mkdir -p build && cd build && cmake .. && make -j32 dbtest'"
 
 # Or use the convenience script
 sg docker -c "./docker_build.sh build"

@@ -39,7 +39,7 @@ jobs:
       run: |
         mkdir -p build
         cd build
-        cmake .. -DPAXOS_LIB_ENABLED=1 -DMICRO_BENCHMARK=0
+        cmake ..
         
     - name: Build libmako
       run: |

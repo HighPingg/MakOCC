@@ -4,6 +4,7 @@
 #include "deptran/s_main.h"
 #include "benchmarks/sto/sync_util.hh"
 #include "lib/common.h"
+#include "benchmarks/benchmark_config.h"
 
 #ifndef MAX
 #define MAX(a,b) ((a)>(b)?(a):(b))
@@ -293,14 +294,13 @@ int Transaction::shard_validate() {
 }
 
 void Transaction::shard_serialize_util(uint32_t timestamp) {
-#if defined(PAXOS_LIB_ENABLED)
+    if (!BenchmarkConfig::getInstance().getIsReplicated()) {return ;}
     #if defined(SIMPLE_WORKLOAD)
         int small_batch_num=2;
     #else
         int small_batch_num=100;
     #endif
     serialize_util(1 /* anything > 0 */, true, MAX_ARRAY_SIZE_IN_BYTES_SMALL, small_batch_num, timestamp);
-#endif
 }
 
 uint8_t Transaction::get_current_term() const {
@@ -584,19 +584,19 @@ bool Transaction::try_commit(bool no_paxos) {
     }
 #endif
 
-#if defined(PAXOS_LIB_ENABLED)
-    if (!no_paxos) {
-        #if defined(SIMPLE_WORKLOAD)
-            int large_batch_num=5;
-        #else
-            int large_batch_num=400;
-        #endif
-
-        if (TThread::get_is_micro())
-            large_batch_num=3000;
-        serialize_util(nwriteset, false, MAX_ARRAY_SIZE_IN_BYTES, large_batch_num, tid_unique_);
+    if (BenchmarkConfig::getInstance().getIsReplicated()) {
+        if (!no_paxos) {
+            #if defined(SIMPLE_WORKLOAD)
+                int large_batch_num=5;
+            #else
+                int large_batch_num=400;
+            #endif
+        
+            if (TThread::get_is_micro())
+                large_batch_num=3000;
+            serialize_util(nwriteset, false, MAX_ARRAY_SIZE_IN_BYTES, large_batch_num, tid_unique_);
+        }
     }
-#endif
 
     stop(true, writeset, nwriteset);
     // if (TThread::writeset_shard_bits > 0) {

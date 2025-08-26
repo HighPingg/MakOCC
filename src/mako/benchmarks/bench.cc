@@ -423,11 +423,11 @@ bench_runner::run()
       }
     }
 
-#if defined(PAXOS_LIB_ENABLED)
-    std::string log(mako::ADVANCER_MARKER_NUM, 'a');
-    for(int i=0;i<BenchmarkConfig::getInstance().getNthreads();i++)
-      add_log_to_nc(log.c_str(), log.size(), i); // notify others start a advancer
-#endif
+    if (cfg.getIsReplicated()) {
+      std::string log(mako::ADVANCER_MARKER_NUM, 'a');
+      for(int i=0;i<BenchmarkConfig::getInstance().getNthreads();i++)
+        add_log_to_nc(log.c_str(), log.size(), i); // notify others start a advancer
+    }
   }
   const vector<bench_worker *> workers = make_workers();
   ALWAYS_ASSERT(!workers.empty());

@@ -44,10 +44,10 @@ class ExperimentRunner:
         else:
             self.commands.append("")
 
-    def compile_project(self, shards, is_replicated):
+    def compile_project(self, shards, is_replicated, is_micro):
         """Compile the project with specified parameters"""
         print(f"\n=== COMPILATION ===")
-        print(f"Shards: {shards}, Replicated: {is_replicated}")
+        print(f"Shards: {shards}, Replicated: {is_replicated}, Micro: {is_micro}")
         
         self.add_section_break("COMPILATION")
         
@@ -63,7 +63,7 @@ class ExperimentRunner:
         self.add_section_break()
         
         # Configure with CMake
-        cmake_cmd = (f"cmake .. -DPAXOS_LIB_ENABLED={is_replicated}")
+        cmake_cmd = (f"cmake ..")
         self.run_command(cmake_cmd, "Configure with CMake")
         self.add_section_break()
         
@@ -93,11 +93,12 @@ class ExperimentRunner:
             print(f"Config file {config_file} not found")
         return "127.0.0.1"  # fallback
 
-    def run_experiment(self, shards, threads, is_replicated):
+    def run_experiment(self, shards, threads, is_replicated, is_micro):
         """Run experiment with or without replication"""
         mode = "REPLICATED" if is_replicated else "NON-REPLICATED"
-        print(f"\n=== {mode} EXPERIMENT ===")
-        print(f"Shards: {shards}, Threads: {threads}")
+        workload = "MICRO" if is_micro else "TPCC"
+        print(f"\n=== {mode} EXPERIMENT ({workload}) ===")
+        print(f"Shards: {shards}, Threads: {threads}, Workload: {workload}")
         
         self.add_section_break(f"{mode} EXPERIMENT")
         
@@ -115,7 +116,10 @@ class ExperimentRunner:
             
             for role in roles:
                 host = self.get_host_for_role(shard, role)
-                cmd = f"bash bash/shard.sh {shards} {shard} {threads} {role}"
+                # Pass is_micro and is_replicated as 5th and 6th parameters
+                micro_flag = "1" if is_micro else "0"
+                replicated_flag = "1" if is_replicated else "0"
+                cmd = f"bash bash/shard.sh {shards} {shard} {threads} {role} {micro_flag} {replicated_flag}"
                 log_file = f"./results/{role}-{shard}.log"
                 
                 # Always use SSH for consistency
@@ -178,6 +182,7 @@ class ExperimentRunner:
         params = self.experiment_params
         shards = params.get('shards', 0)
         replicated = "repl" if params.get('is_replicated', False) else "norepl"
+        micro = "micro" if params.get('is_micro', False) else "tpcc"
         threads = params.get('threads', 0)
         
         suffix = ""
@@ -188,7 +193,7 @@ class ExperimentRunner:
         elif skip_compile:
             suffix = "_no-compile"
         
-        return f"experiment_s{shards}_{replicated}_t{threads}_{suffix}.sh"
+        return f"experiment_s{shards}_{replicated}_{micro}_t{threads}{suffix}.sh"
 
     def save_commands_script(self, filename=None, is_cleanup=False, only_compile=False, skip_compile=False):
         """Save all commands to a bash script with descriptive header"""
@@ -208,6 +213,7 @@ class ExperimentRunner:
 # Experiment Configuration:
 #   - Shards: {params.get('shards', 'N/A')}
 #   - Replication: {'Enabled (Paxos)' if params.get('is_replicated', False) else 'Disabled'}
+#   - Workload: {'Micro-benchmark' if params.get('is_micro', False) else 'TPC-C'}
 #   - Threads per shard: {params.get('threads', 'N/A')}
 #   - Mode: {'Dry run' if self.dry_run else 'Executed'}
 #
@@ -237,6 +243,8 @@ def main():
                        help="Number of shards (default: 3)")
     parser.add_argument("--replicated", action="store_true", 
                        help="Enable replication (Paxos)")
+    parser.add_argument("--micro", action="store_true",
+                       help="Run micro-benchmark instead of TPCC")
     
     parser.add_argument("--threads", type=int, default=6, 
                        help="Number of worker threads per shard (default: 6)")
@@ -271,6 +279,7 @@ def main():
         runner.experiment_params = {
             'shards': args.shards,
             'is_replicated': args.replicated,
+            'is_micro': args.micro,
             'threads': args.threads,
         }
         
@@ -279,7 +288,8 @@ def main():
         elif args.only_compile:
             # Only compile, don't run experiments
             success = runner.compile_project(args.shards, 
-                                           1 if args.replicated else 0)
+                                           1 if args.replicated else 0,
+                                           1 if args.micro else 0)
             if not success and not args.dry_run:
                 print("Compilation failed!")
                 return 1
@@ -287,12 +297,13 @@ def main():
             # Compile first (unless skipped), then run
             if not args.skip_compile:
                 success = runner.compile_project(args.shards, 
-                                               1 if args.replicated else 0)
+                                               1 if args.replicated else 0,
+                                               1 if args.micro else 0)
                 if not success and not args.dry_run:
                     print("Compilation failed!")
                     return 1
             
-            runner.run_experiment(args.shards, args.threads, args.replicated)
+            runner.run_experiment(args.shards, args.threads, args.replicated, args.micro)
         
         # Always save commands to file
         runner.save_commands_script(is_cleanup=args.cleanup_only, 

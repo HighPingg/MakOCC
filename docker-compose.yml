@@ -10,7 +10,7 @@ services:
     volumes:
       - .:/workspace
     working_dir: /workspace
-    command: /bin/bash -c "cd /workspace && rm -rf build && mkdir -p build && cd build && cmake .. -DPAXOS_LIB_ENABLED=1 -DMICRO_BENCHMARK=0 && make -j32 dbtest"
+    command: /bin/bash -c "cd /workspace && rm -rf build && mkdir -p build && cd build && cmake .. && make -j32 dbtest"
     
   ubuntu22-dev:
     image: mako-build:ubuntu22

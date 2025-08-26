@@ -11,6 +11,7 @@
 #include "sto/StringWrapper.hh"
 #include <unordered_map> 
 #include "benchmarks/tpcc.h"
+#include "benchmarks/benchmark_config.h"
 
 // We have to do it on the coordinator instead of transaction.cc, because it only has a local copy of the readSet;
 #define GET_NODE_POINTER(val,len) reinterpret_cast<mako::Node *>((char*)(val+len-mako::BITS_OF_NODE));

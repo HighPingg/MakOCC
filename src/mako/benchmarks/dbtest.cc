@@ -11,6 +11,7 @@ static std::atomic<int> end_received_leader(0);
 static void parse_command_line_args(int argc, char **argv, 
                                    string& paxos_proc_name,
                                    int &is_micro,
+                                   int &is_replicated,
                                    string& site_name,
                                    vector<string>& paxos_config_file,
                                    int& leader_config)
@@ -24,7 +25,8 @@ static void parse_command_line_args(int argc, char **argv,
       {"paxos-config"               , required_argument , 0                          , 'F'} ,
       {"paxos-proc-name"            , required_argument , 0                          , 'P'} ,
       {"site-name"                  , required_argument , 0                          , 'N'} ,
-      {"is_micro"                   , no_argument       , &is_micro                  ,   1} ,
+      {"is-micro"                   , no_argument       , &is_micro                  ,   1} ,
+      {"is-replicated"              , no_argument       , &is_replicated             ,   1} ,
       {0, 0, 0, 0}
     };
     int option_index = 0;
@@ -140,6 +142,8 @@ static void print_system_info(const string paxos_proc_name, size_t numa_memory)
   cerr << "  shardIndex  : " << benchConfig.getShardIndex()<< endl;
   cerr << "  paxos_proc_name  : " << paxos_proc_name      << endl;
   cerr << "  nshards     : " << benchConfig.getNshards()   << endl;
+  cerr << "  is_micro    : " << benchConfig.getIsMicro()   << endl;
+  cerr << "  is_replicated : " << benchConfig.getIsReplicated()   << endl;
 #ifdef USE_VARINT_ENCODING
   cerr << "  var-encode  : yes"                           << endl;
 #else
@@ -212,29 +216,17 @@ static void setup_sync_util_callbacks()
 {
   // Invoke get_epoch function
   register_sync_util([&]() {
-#if defined(PAXOS_LIB_ENABLED)
-     return get_epoch();
-#else
-    return 0;
-#endif
+    return BenchmarkConfig::getInstance().getIsReplicated()? get_epoch(): 0;
   });
 
   // rpc client
   register_sync_util_sc([&]() {
-#if defined(FAIL_NEW_VERSION) && defined(PAXOS_LIB_ENABLED)
-    return get_epoch();
-#else
-    return 0;
-#endif
+    return BenchmarkConfig::getInstance().getIsReplicated()? get_epoch(): 0;
   });
 
   // rpc server
   register_sync_util_ss([&]() {
-#if defined(FAIL_NEW_VERSION) && defined(PAXOS_LIB_ENABLED)
-  return get_epoch();
-#else
-  return 0;
-#endif
+    return BenchmarkConfig::getInstance().getIsReplicated()? get_epoch(): 0;
   });
 }
 
@@ -398,7 +390,7 @@ static void wait_for_termination()
 
 static void register_paxos_follower_callback(TSharedThreadPoolMbta& tpool_mbta, int thread_id)
 {
-#if defined(PAXOS_LIB_ENABLED)
+  if (!BenchmarkConfig::getInstance().getIsReplicated()) { return ; }
   //transport::ShardAddress addr = config->shard(shardIndex, mako::LEARNER_CENTER);
   register_for_follower_par_id_return([&,thread_id](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<int, int, int, int, const char *>> & un_replay_logs_) {
     auto& benchConfig = BenchmarkConfig::getInstance();
@@ -539,12 +531,11 @@ static void register_paxos_follower_callback(TSharedThreadPoolMbta& tpool_mbta, 
     return static_cast<int>(timestamp * 10 + status);
   }, 
   thread_id);
-#endif
 }
 
 static void register_paxos_leader_callback(vector<pair<uint32_t, uint32_t>>& advanceWatermarkTracker, int thread_id)
 {
-#if defined(PAXOS_LIB_ENABLED)
+  if (!BenchmarkConfig::getInstance().getIsReplicated()) { return ; }
   register_for_leader_par_id_return([&,thread_id](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<int, int, int, int, const char *>> & un_replay_logs_) {
     //Warning("receive a register_for_leader_par_id_return, par_id:%d, slot_id:%d,len:%d",par_id, slot_id,len);
     int status = mako::PaxosStatus::STATUS_NORMAL;
@@ -624,19 +615,16 @@ static void register_paxos_leader_callback(vector<pair<uint32_t, uint32_t>>& adv
     return static_cast<int>(timestamp * 10 + status);
   },
   thread_id);
-#endif
 }
 
 static void setup_paxos_callbacks(TSharedThreadPoolMbta& tpool_mbta, 
                                   vector<pair<uint32_t, uint32_t>>& advanceWatermarkTracker)
 {
-#if defined(PAXOS_LIB_ENABLED)
-  auto& benchConfig = BenchmarkConfig::getInstance();
-  for (int i = 0; i < benchConfig.getNthreads(); i++) {
+  if (!BenchmarkConfig::getInstance().getIsReplicated()) { return ; }
+  for (int i = 0; i < BenchmarkConfig::getInstance().getNthreads(); i++) {
     register_paxos_follower_callback(tpool_mbta, i);
     register_paxos_leader_callback(advanceWatermarkTracker, i);
   }
-#endif
 }
 
 static void run_latency_tracking(int leader_config,
@@ -695,11 +683,11 @@ static void run_workers(int leader_config, abstract_db* db, TSharedThreadPoolMbt
 
 static void cleanup_and_shutdown()
 {
-#if defined(PAXOS_LIB_ENABLED)
-  std::this_thread::sleep_for(2s);
-  pre_shutdown_step();
-  shutdown_paxos();
-#endif
+  if (BenchmarkConfig::getInstance().getIsReplicated()) { 
+    std::this_thread::sleep_for(2s);
+    pre_shutdown_step();
+    shutdown_paxos();
+  }
 
   sync_util::sync_logger::shutdown();
   std::quick_exit( EXIT_SUCCESS );
@@ -715,6 +703,7 @@ main(int argc, char **argv)
 
   int leader_config = 0;
   int is_micro = 0;  // Flag for micro benchmark mode
+  int is_replicated = 0;  // if use Paxos to replicate
   int kPaxosBatchSize = 50000;
   vector<string> paxos_config_file{};
   string paxos_proc_name = mako::LOCALHOST_CENTER;
@@ -724,11 +713,12 @@ main(int argc, char **argv)
   std::vector<std::pair<uint32_t, uint32_t>> advanceWatermarkTracker;  // local watermark -> time
 
   // Parse command line arguments
-  parse_command_line_args(argc, argv, paxos_proc_name, is_micro, site_name, paxos_config_file, leader_config);
+  parse_command_line_args(argc, argv, paxos_proc_name, is_micro, is_replicated, site_name, paxos_config_file, leader_config);
 
   // Handle new configuration format if site name is provided
   auto& benchConfig = BenchmarkConfig::getInstance();
   benchConfig.setIsMicro(is_micro);
+  benchConfig.setIsReplicated(is_replicated);
   if (!site_name.empty() && benchConfig.getConfig() != nullptr) {
     handle_new_config_format(site_name, leader_config, paxos_proc_name);
   }
@@ -774,7 +764,7 @@ main(int argc, char **argv)
   setup_transport_callbacks();
   setup_leader_election_callback();
 
-#if defined(PAXOS_LIB_ENABLED)
+if (BenchmarkConfig::getInstance().getIsReplicated()) {
   //StringAllocator::setSTOBatchSize(kSTOBatchSize);
  
   std::vector<std::string> ret = setup(18, argv_paxos);
@@ -787,7 +777,7 @@ main(int argc, char **argv)
 
   int ret2 = setup2(0, benchConfig.getShardIndex());
   sleep(3); // ensure that all get started
-#endif // END OF PAXOS_LIB_ENABLED
+}
 
   // Run worker threads
   run_workers(leader_config, db, tpool_mbta);

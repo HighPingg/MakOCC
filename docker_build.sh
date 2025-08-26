@@ -34,7 +34,7 @@ case "$ACTION" in
                      rm -rf build && \
                      mkdir -p build && \
                      cd build && \
-                     cmake .. -DPAXOS_LIB_ENABLED=1 -DMICRO_BENCHMARK=0 && \
+                     cmake .. && \
                      make -j${JOBS} dbtest"
         echo -e "${GREEN}Build completed successfully!${NC}"
         ;;
@@ -51,7 +51,7 @@ case "$ACTION" in
                      rm -rf build && \
                      mkdir -p build && \
                      cd build && \
-                     cmake .. -DPAXOS_LIB_ENABLED=1 -DMICRO_BENCHMARK=0 && \
+                     cmake .. && \
                      make -j${JOBS} mako && \
                      echo 'SUCCESS: libmako.a built' && \
                      ls -la libmako.a"
