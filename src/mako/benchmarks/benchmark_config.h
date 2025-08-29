@@ -3,7 +3,9 @@
 
 #include <stdint.h>
 #include <string>
+#include <vector>
 #include "lib/configuration.h"
+#include "lib/common.h"
 
 enum {
   RUNMODE_TIME = 0,
@@ -67,6 +69,8 @@ class BenchmarkConfig {
       int use_hashtable_;
       int is_micro_;
       int is_replicated_;
+      string paxos_proc_name_;
+      std::vector<std::string> paxos_config_file_;
 
   public:
       // Delete copy/move constructors
@@ -106,6 +110,9 @@ class BenchmarkConfig {
       int getUseHashtable() const { return use_hashtable_; }
       int getIsMicro() const { return is_micro_; }
       int getIsReplicated() const { return is_replicated_; }
+      std::string getPaxosProcName() const { return paxos_proc_name_; }
+      int getLeaderConfig() const { return paxos_proc_name_==mako::LOCALHOST_CENTER; }
+      const std::vector<std::string>& getPaxosConfigFile() const { return paxos_config_file_; }
 
       // Setters
       void setNthreads(size_t n) { nthreads_ = n; }
@@ -134,6 +141,8 @@ class BenchmarkConfig {
       void setUseHashtable(int use) { use_hashtable_ = use; }
       void setIsMicro(int micro) { is_micro_ = micro; }
       void setIsReplicated(int replicated) { is_replicated_ = replicated; }
+      void setPaxosProcName(std::string paxos_proc_name) { paxos_proc_name_ = paxos_proc_name; }
+      void setPaxosConfigFile(const std::vector<std::string>& paxos_config_file) { paxos_config_file_ = paxos_config_file; }
 };
 
 #endif /* _NDB_BENCHMARK_CONFIG_H_ */

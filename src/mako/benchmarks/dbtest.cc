@@ -8,13 +8,13 @@ using namespace util;
 static std::atomic<int> end_received(0);
 static std::atomic<int> end_received_leader(0);
 
-static void parse_command_line_args(int argc, char **argv, 
-                                   string& paxos_proc_name,
-                                   int &is_micro,
-                                   int &is_replicated,
-                                   string& site_name,
-                                   vector<string>& paxos_config_file,
-                                   int& leader_config)
+static void parse_command_line_args(int argc, 
+                                    char **argv, 
+                                    string& paxos_proc_name,
+                                    int &is_micro,
+                                    int &is_replicated,
+                                    string& site_name,
+                                    vector<string>& paxos_config_file)
 {
   while (1) {
     static struct option long_options[] =
@@ -65,7 +65,6 @@ static void parse_command_line_args(int argc, char **argv,
       paxos_proc_name = string(optarg);
       config.setCluster(paxos_proc_name);
       config.setClusterRole(mako::convertCluster(paxos_proc_name));
-      if (paxos_proc_name.compare(mako::LOCALHOST_CENTER) == 0) leader_config = 1;
       }
       break;
     
@@ -91,7 +90,6 @@ static void parse_command_line_args(int argc, char **argv,
 }
 
 static void handle_new_config_format(const string& site_name,
-                                    int& leader_config,
                                     string& paxos_proc_name)
 {
   auto& benchConfig = BenchmarkConfig::getInstance();
@@ -100,9 +98,6 @@ static void handle_new_config_format(const string& site_name,
     cerr << "[ERROR] Site " << site_name << " not found in configuration" << endl;
     exit(1);
   }
-  
-  // Determine if this site is a leader
-  leader_config = site->is_leader ? 1 : 0;
   
   // Set shard index from site
   benchConfig.setShardIndex(site->shard_id);
@@ -130,55 +125,7 @@ static void handle_new_config_format(const string& site_name,
          site_name.c_str(), site->shard_id, site->replica_idx, site->is_leader, benchConfig.getCluster().c_str());
 }
 
-static void print_system_info(const string paxos_proc_name, size_t numa_memory)
-{
-  const unsigned long ncpus = coreid::num_cpus_online();
-  cerr << "Database Benchmark:"                           << endl;
-  cerr << "  pid: " << getpid()                           << endl;
-  cerr << "settings:"                                     << endl;
-  cerr << "  num-cpus    : " << ncpus                     << endl;
-  auto& benchConfig = BenchmarkConfig::getInstance();
-  cerr << "  num-threads : " << benchConfig.getNthreads()  << endl;
-  cerr << "  shardIndex  : " << benchConfig.getShardIndex()<< endl;
-  cerr << "  paxos_proc_name  : " << paxos_proc_name      << endl;
-  cerr << "  nshards     : " << benchConfig.getNshards()   << endl;
-  cerr << "  is_micro    : " << benchConfig.getIsMicro()   << endl;
-  cerr << "  is_replicated : " << benchConfig.getIsReplicated()   << endl;
-#ifdef USE_VARINT_ENCODING
-  cerr << "  var-encode  : yes"                           << endl;
-#else
-  cerr << "  var-encode  : no"                            << endl;
-#endif
 
-#ifdef USE_JEMALLOC
-  cerr << "  allocator   : jemalloc"                      << endl;
-#elif defined USE_TCMALLOC
-  cerr << "  allocator   : tcmalloc"                      << endl;
-#elif defined USE_FLOW
-  cerr << "  allocator   : flow"                          << endl;
-#else
-  cerr << "  allocator   : libc"                          << endl;
-#endif
-  if (numa_memory > 0) {
-    cerr << "  numa-memory : " << numa_memory             << endl;
-  } else {
-    cerr << "  numa-memory : disabled"                    << endl;
-  }
-
-  cerr << "system properties:" << endl;
-
-#ifdef TUPLE_PREFETCH
-  cerr << "  tuple_prefetch          : yes" << endl;
-#else
-  cerr << "  tuple_prefetch          : no" << endl;
-#endif
-
-#ifdef BTREE_NODE_PREFETCH
-  cerr << "  btree_node_prefetch     : yes" << endl;
-#else
-  cerr << "  btree_node_prefetch     : no" << endl;
-#endif
-}
 
 static char** prepare_paxos_args(const vector<string>& paxos_config_file,
                                 const string& paxos_proc_name,
@@ -696,62 +643,34 @@ static void cleanup_and_shutdown()
 int
 main(int argc, char **argv)
 {
-  abstract_db *db = NULL;
-  string basedir = "./tmp";
-  size_t numa_memory = mako::parse_memory_spec("1G");
-  string bench_opts = "--new-order-fast-id-gen";
-
-  int leader_config = 0;
   int is_micro = 0;  // Flag for micro benchmark mode
   int is_replicated = 0;  // if use Paxos to replicate
-  int kPaxosBatchSize = 50000;
+  std::string paxos_proc_name = mako::LOCALHOST_CENTER;
   vector<string> paxos_config_file{};
-  string paxos_proc_name = mako::LOCALHOST_CENTER;
+
   string site_name = "";  // For new config format
 
   // tracking vectorized watermark
   std::vector<std::pair<uint32_t, uint32_t>> advanceWatermarkTracker;  // local watermark -> time
 
+  auto& benchConfig = BenchmarkConfig::getInstance();
   // Parse command line arguments
-  parse_command_line_args(argc, argv, paxos_proc_name, is_micro, is_replicated, site_name, paxos_config_file, leader_config);
+  parse_command_line_args(argc, argv, paxos_proc_name, is_micro, is_replicated, site_name, paxos_config_file);
 
   // Handle new configuration format if site name is provided
-  auto& benchConfig = BenchmarkConfig::getInstance();
+  if (!site_name.empty() && benchConfig.getConfig() != nullptr) {
+    handle_new_config_format(site_name, paxos_proc_name);
+  }
+
   benchConfig.setIsMicro(is_micro);
   benchConfig.setIsReplicated(is_replicated);
-  if (!site_name.empty() && benchConfig.getConfig() != nullptr) {
-    handle_new_config_format(site_name, leader_config, paxos_proc_name);
-  }
+  benchConfig.setPaxosProcName(paxos_proc_name);
+  benchConfig.setPaxosConfigFile(paxos_config_file);
 
+  abstract_db * db = init();
 
-  // initialize the numa allocator
-  if (numa_memory > 0) {
-    const size_t maxpercpu = util::iceil(
-        numa_memory / benchConfig.getNthreads(), ::allocator::GetHugepageSize());
-    numa_memory = maxpercpu * benchConfig.getNthreads();
-    ::allocator::Initialize(benchConfig.getNthreads(), maxpercpu);
-  }
-
-  initialize_rust_wrapper();
-  db = new mbta_wrapper; // on the leader replica
-
-  // Print system information
-  print_system_info(paxos_proc_name, numa_memory);
-
-  sync_util::sync_logger::Init(benchConfig.getShardIndex(), benchConfig.getNshards(), benchConfig.getNthreads(), 
-                               leader_config==1, /* is leader */ 
-                               benchConfig.getCluster(),
-                               benchConfig.getConfig());
-  
-  // Prepare Paxos arguments
-  if (paxos_config_file.size() < 2) {
-      cerr << "no enough paxos config files" << endl;
-      return 1;
-  }
-  char** argv_paxos = prepare_paxos_args(paxos_config_file, paxos_proc_name, kPaxosBatchSize);
-  
   TSharedThreadPoolMbta tpool_mbta (benchConfig.getNthreads()+1);
-  if (!leader_config) { // initialize tables on follower replicas
+  if (!benchConfig.getLeaderConfig()) { // initialize tables on follower replicas
     abstract_db * db = tpool_mbta.getDBWrapper(benchConfig.getNthreads())->getDB () ;
     // pre-initialize all tables to avoid table creation data race
     for (int i=0;i<((size_t)benchConfig.getScaleFactor())*11+1;i++) {
@@ -759,14 +678,20 @@ main(int argc, char **argv)
     }
   }
 
+  // Prepare Paxos arguments
+  int kPaxosBatchSize = 50000;
+  if (benchConfig.getPaxosConfigFile().size() < 2) {
+      cerr << "no enough paxos config files" << endl;
+      return 1;
+  }
+  char** argv_paxos = prepare_paxos_args(benchConfig.getPaxosConfigFile(), paxos_proc_name, kPaxosBatchSize);
+  
   // Setup callbacks
   setup_sync_util_callbacks();
   setup_transport_callbacks();
   setup_leader_election_callback();
 
 if (BenchmarkConfig::getInstance().getIsReplicated()) {
-  //StringAllocator::setSTOBatchSize(kSTOBatchSize);
- 
   std::vector<std::string> ret = setup(18, argv_paxos);
   if (ret.empty()) {
     return -1;
@@ -780,13 +705,13 @@ if (BenchmarkConfig::getInstance().getIsReplicated()) {
 }
 
   // Run worker threads
-  run_workers(leader_config, db, tpool_mbta);
+  run_workers(benchConfig.getLeaderConfig(), db, tpool_mbta);
 
   // Track and report latency if configured
-  run_latency_tracking(leader_config, advanceWatermarkTracker);
+  run_latency_tracking(benchConfig.getLeaderConfig(), advanceWatermarkTracker);
 
   // Wait for termination if not a leader
-  if (!leader_config) {
+  if (!benchConfig.getLeaderConfig()) {
     wait_for_termination();
   }
 
