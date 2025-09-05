@@ -96,7 +96,7 @@ static void print_system_info()
 static abstract_db* init() {
   auto& benchConfig = BenchmarkConfig::getInstance();
 
-  initialize_rust_wrapper();
+  //initialize_rust_wrapper();
 
   // initialize the numa allocator
   size_t numa_memory = mako::parse_memory_spec("1G");
@@ -118,6 +118,481 @@ static abstract_db* init() {
   
   abstract_db *db = new mbta_wrapper; // on the leader replica
   return db; 
+}
+
+
+static void register_paxos_follower_callback(TSharedThreadPoolMbta& tpool_mbta, int thread_id)
+{
+  if (!BenchmarkConfig::getInstance().getIsReplicated()) { return ; }
+  //transport::ShardAddress addr = config->shard(shardIndex, mako::LEARNER_CENTER);
+  register_for_follower_par_id_return([&,thread_id](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<int, int, int, int, const char *>> & un_replay_logs_) {
+    auto& benchConfig = BenchmarkConfig::getInstance();
+    //Warning("receive a register_for_follower_par_id_return, par_id:%d, slot_id:%d,len:%d",par_id, slot_id,len);
+    int status = mako::PaxosStatus::STATUS_INIT;
+    uint32_t timestamp = 0;  // Track timestamp for return value encoding
+    abstract_db * db = tpool_mbta.getDBWrapper(par_id)->getDB () ;
+    bool noops = false;
+
+    if (len==mako::ADVANCER_MARKER_NUM) { // start a advancer
+      status = mako::PaxosStatus::STATUS_REPLAY_DONE;
+      if (par_id==0){
+        std::cout << "we can start a advancer" << std::endl;
+        sync_util::sync_logger::start_advancer();
+      }
+      return status; 
+    }
+
+    // ending of Paxos group
+    if (len==0) {
+      Warning("Recieved a zero length log");
+      status = mako::PaxosStatus::STATUS_ENDING;
+      // update the timestamp for this Paxos stream so that not blocking other Paxos streams
+      uint32_t min_so_far = numeric_limits<uint32_t>::max();
+      sync_util::sync_logger::local_timestamp_[par_id].store(min_so_far, memory_order_release) ;
+      benchConfig.incrementEndReceived();
+    }
+
+    // deal with Paxos log
+    if (len>0) {
+      if (isNoops(log,len)!=-1) {
+        Warning("receive a noops, par_id:%d on follower_callback_,%s",par_id,log);
+        if (par_id==0) set_epoch(isNoops(log,len));
+        noops=true;
+        status = mako::PaxosStatus::STATUS_NOOPS;
+      }
+
+      if (noops) {
+        sync_util::sync_logger::noops_cnt++;
+        while (1) { // check if all threads receive noops
+          if (sync_util::sync_logger::noops_cnt.load(memory_order_acquire)==benchConfig.getNthreads()) {
+            break ;
+          }
+          sleep(0);
+          break;
+        }
+        Warning("phase-1,par_id:%d DONE",par_id);
+        if (par_id==0) {
+          uint32_t local_w = sync_util::sync_logger::computeLocal();
+          //Warning("update %s in phase-1 on port:%d", ("noops_phase_"+std::to_string(shardIndex)).c_str(), config->mports[clusterRole]);
+          mako::NFSSync::set_key("noops_phase_"+std::to_string(benchConfig.getShardIndex()), 
+                                     std::to_string(local_w).c_str(),
+                                     benchConfig.getConfig()->shard(0, benchConfig.getClusterRole()).host.c_str(),
+                                     benchConfig.getConfig()->mports[benchConfig.getClusterRole()]);
+
+
+          //Warning("We update local_watermark[%d]=%llu",shardIndex, local_w);
+          // update the history stable timestamp
+          // TODO: replay inside the function
+          sync_util::sync_logger::update_stable_timestamp(get_epoch()-1, sync_util::sync_logger::retrieveShardW()/10);
+        }
+      }else{
+        CommitInfo commit_info = get_latest_commit_info((char *) log, len);
+        timestamp = commit_info.timestamp;  // Store for return value encoding
+        sync_util::sync_logger::local_timestamp_[par_id].store(commit_info.timestamp, memory_order_release) ;
+        uint32_t w = sync_util::sync_logger::retrieveW();
+        // Single timestamp safety check
+        if (sync_util::sync_logger::safety_check(commit_info.timestamp, w)) { // pass safety check
+          benchConfig.incrementReplayBatch();
+          treplay_in_same_thread_opt_mbta_v2(par_id, (char*)log, len, db, benchConfig.getNthreads());
+          //Warning("replay[YES] par_id:%d,st:%u,slot_id:%d,un_replay_logs_:%d", par_id, commit_info.timestamp, slot_id,un_replay_logs_.size());
+          status = mako::PaxosStatus::STATUS_REPLAY_DONE;
+        } else {
+          //Warning("replay[NO] par_id:%d,st:%u,slot_id:%d,un_replay_logs_:%d", par_id, commit_info.timestamp, slot_id,un_replay_logs_.size());
+          status = mako::PaxosStatus::STATUS_SAFETY_FAIL;
+        }
+      }
+    }
+
+    // wait for vectorized watermark computed from other partition servers
+    if (noops) {
+      for (int i=0; i<benchConfig.getNthreads(); i++) {
+        if (i!=benchConfig.getShardIndex() && par_id==0) {
+          mako::NFSSync::wait_for_key("noops_phase_"+std::to_string(i), 
+                                          benchConfig.getConfig()->shard(0, benchConfig.getClusterRole()).host.c_str(), benchConfig.getConfig()->mports[benchConfig.getClusterRole()]);
+          std::string local_w = mako::NFSSync::get_key("noops_phase_"+std::to_string(i), 
+                                                          benchConfig.getConfig()->shard(0, benchConfig.getClusterRole()).host.c_str(), 
+                                                          benchConfig.getConfig()->mports[benchConfig.getClusterRole()]);
+
+          //Warning("We update local_watermark[%d]=%s (others)",i, local_w.c_str());
+          // In single timestamp system, use max value from all shards
+          uint32_t new_watermark = std::stoull(local_w);
+          uint32_t current = sync_util::sync_logger::single_watermark_.load(memory_order_acquire);
+          if (new_watermark > current) {
+              sync_util::sync_logger::single_watermark_.store(new_watermark, memory_order_release);
+          }
+        }
+      }
+    }
+    auto w = sync_util::sync_logger::retrieveW(); 
+
+    while (un_replay_logs_.size() > 0) {
+        auto it = un_replay_logs_.front() ;
+        if (sync_util::sync_logger::safety_check(std::get<0>(it), w)) {
+          //Warning("replay-2 par_id:%d, slot_id:%d,un_replay_logs_:%d", par_id, std::get<1>(it),un_replay_logs_.size());
+          benchConfig.incrementReplayBatch();
+          auto nums = treplay_in_same_thread_opt_mbta_v2(par_id, (char *) std::get<4>(it), std::get<3>(it), db, benchConfig.getNthreads());
+          un_replay_logs_.pop() ;
+          free((char*)std::get<4>(it));
+        } else {
+          if (noops){
+            un_replay_logs_.pop() ; // TODOs: should compare each transactions one by one
+            Warning("no-ops pop a log, par_id:%d,slot_id:%d", par_id,std::get<1>(it));
+            free((char*)std::get<4>(it));
+          }else{
+            break ;
+          }
+        }
+    }
+
+    // wait for all worker threads replay DONE
+    if (noops){
+      sync_util::sync_logger::noops_cnt_hole++ ;
+      while (1) {
+        if (sync_util::sync_logger::noops_cnt_hole.load(memory_order_acquire)==benchConfig.getNthreads()) {
+          break ;
+        } else {
+          sleep(0);
+          break;
+        }
+      }
+
+      Warning("phase-3,par_id:%d DONE",par_id);
+
+      if (par_id==0) {
+        sync_util::sync_logger::reset();
+      }
+    }
+    // Return timestamp * 10 + status (for safety check compatibility)
+    return static_cast<int>(timestamp * 10 + status);
+  }, 
+  thread_id);
+}
+
+
+
+static void register_paxos_leader_callback(vector<pair<uint32_t, uint32_t>>& advanceWatermarkTracker, int thread_id)
+{
+  if (!BenchmarkConfig::getInstance().getIsReplicated()) { return ; }
+  register_for_leader_par_id_return([&,thread_id](const char*& log, int len, int par_id, int slot_id, std::queue<std::tuple<int, int, int, int, const char *>> & un_replay_logs_) {
+    auto& benchConfig = BenchmarkConfig::getInstance();
+    //Warning("receive a register_for_leader_par_id_return, par_id:%d, slot_id:%d,len:%d",par_id, slot_id,len);
+    int status = mako::PaxosStatus::STATUS_NORMAL;
+    uint32_t timestamp = 0;  // Track timestamp for return value encoding
+    bool noops = false;
+
+    if (len==mako::ADVANCER_MARKER_NUM) { // start a advancer
+      status = mako::PaxosStatus::STATUS_REPLAY_DONE;
+      if (par_id==0){
+        std::cout << "we can start a advancer" << std::endl;
+        sync_util::sync_logger::start_advancer();
+      }
+      return status; 
+    }
+
+    if (len==0) {
+      status = mako::PaxosStatus::STATUS_ENDING;
+      Warning("Recieved a zero length log");
+      uint32_t min_so_far = numeric_limits<uint32_t>::max();
+      sync_util::sync_logger::local_timestamp_[par_id].store(min_so_far, memory_order_release) ;
+      benchConfig.incrementEndReceivedLeader();
+    }
+
+    if (len>0) {
+      if (isNoops(log,len)!=-1) {
+        //Warning("receive a noops, par_id:%d on leader_callback_,log:%s",par_id,log);
+        noops=true;
+        status = mako::PaxosStatus::STATUS_NOOPS;
+      }
+
+      if (noops) {
+        sync_util::sync_logger::noops_cnt++;
+        auto& benchConfig = BenchmarkConfig::getInstance();
+        while (1) { // check if all threads receive noops
+          if (sync_util::sync_logger::noops_cnt.load(memory_order_acquire)==benchConfig.getNthreads()) {
+            break ;
+          }
+          sleep(0);
+          break;
+        }
+        Warning("phase-1,par_id:%d DONE",par_id);
+        if (par_id==0) {
+          uint32_t local_w = sync_util::sync_logger::computeLocal();
+          mako::NFSSync::set_key("noops_phase_"+std::to_string(benchConfig.getShardIndex()), 
+                                        std::to_string(local_w).c_str(),
+                                        benchConfig.getConfig()->shard(0, benchConfig.getClusterRole()).host.c_str(), 
+                                        benchConfig.getConfig()->mports[benchConfig.getClusterRole()]);
+          sync_util::sync_logger::update_stable_timestamp(get_epoch()-1, sync_util::sync_logger::retrieveShardW()/10);
+#if defined(FAIL_NEW_VERSION)
+          mako::NFSSync::set_key("fvw_"+std::to_string(benchConfig.getShardIndex()), 
+                                     std::to_string(local_w).c_str(),
+                                     benchConfig.getConfig()->shard(0, benchConfig.getClusterRole()).host.c_str(),
+                                     benchConfig.getConfig()->mports[benchConfig.getClusterRole()]);
+          std::cout<<"set fvw, " << benchConfig.getClusterRole() << ", fvw_"+std::to_string(benchConfig.getShardIndex())<<":"<<local_w<<std::endl;
+#endif
+          sync_util::sync_logger::reset(); 
+        }
+      }else {
+        CommitInfo commit_info = get_latest_commit_info((char *) log, len);
+        timestamp = commit_info.timestamp;  // Store for return value encoding
+        
+        uint32_t end_time = mako::getCurrentTimeMillis();
+        //Warning("In register_for_leader_par_id_return, par_id:%d, slot_id:%d, len:%d, st: %llu, et: %llu, latency: %llu",
+        //       par_id, slot_id, len, commit_info.latency_tracker, end_time, end_time-commit_info.latency_tracker);
+        sync_util::sync_logger::local_timestamp_[par_id].store(commit_info.timestamp, memory_order_release) ;
+
+#if defined(TRACKING_LATENCY)
+        if (par_id==4){
+          uint32_t vw = sync_util::sync_logger::computeLocal();
+          //Warning("Update here: %llu, before:%llu",vw/10,vw);
+          advanceWatermarkTracker.push_back(std::make_pair(vw/10 /* actual watermark */, mako::getCurrentTimeMillis()));
+        }
+#endif
+      }
+    }
+    // Return timestamp * 10 + status (for safety check compatibility)
+    return static_cast<int>(timestamp * 10 + status);
+  },
+  thread_id);
+}
+
+static void setup_paxos_callbacks(TSharedThreadPoolMbta& tpool_mbta, 
+                                  vector<pair<uint32_t, uint32_t>>& advanceWatermarkTracker)
+{
+  if (!BenchmarkConfig::getInstance().getIsReplicated()) { return ; }
+  for (int i = 0; i < BenchmarkConfig::getInstance().getNthreads(); i++) {
+    register_paxos_follower_callback(tpool_mbta, i);
+    register_paxos_leader_callback(advanceWatermarkTracker, i);
+  }
+}
+
+static void wait_for_termination()
+{
+  auto& benchConfig = BenchmarkConfig::getInstance();
+  bool isLearner = benchConfig.getCluster().compare(mako::LEARNER_CENTER)==0 ;
+  // in case, the Paxos streams on other side is terminated, 
+  // not need for all no-ops for the final termination
+  while (!(benchConfig.getEndReceived() > 0 || benchConfig.getEndReceivedLeader() > 0)) {
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (isLearner)
+      Notice("learner is waiting for being ended: %d/%zu, noops_cnt:%d, replay_batch:%d\n", benchConfig.getEndReceived(), benchConfig.getNthreads(), sync_util::sync_logger::noops_cnt.load(), benchConfig.getReplayBatch());
+    else
+      Notice("follower is waiting for being ended: %d/%zu, noops_cnt:%d, replay_batch:%d\n", benchConfig.getEndReceived(), benchConfig.getNthreads(), sync_util::sync_logger::noops_cnt.load(), benchConfig.getReplayBatch());
+    //if (benchConfig.getEndReceived() > 0) {std::quick_exit( EXIT_SUCCESS );}
+  }
+}
+
+static void setup_sync_util_callbacks()
+{
+  // Invoke get_epoch function
+  register_sync_util([&]() {
+    return BenchmarkConfig::getInstance().getIsReplicated()? get_epoch(): 0;
+  });
+
+  // rpc client
+  register_sync_util_sc([&]() {
+    return BenchmarkConfig::getInstance().getIsReplicated()? get_epoch(): 0;
+  });
+
+  // rpc server
+  register_sync_util_ss([&]() {
+    return BenchmarkConfig::getInstance().getIsReplicated()? get_epoch(): 0;
+  });
+}
+
+
+static void setup_transport_callbacks()
+{
+  // happens on the elected follower-p1, to be the new leader datacenter
+  register_fasttransport_for_dbtest([&](int control, int value) {
+    Warning("receive a control in register_fasttransport_for_dbtest: %d", control);
+    switch (control) {
+      case 4: {
+        // 1. stop the exchange server on p1 datacenter
+        // 2. increase the epoch
+        // 3. add no-ops
+        // 4. sync the logs
+        // 5. start the worker threads 
+        // change the membership
+        upgrade_p1_to_leader();
+
+        string log = "no-ops:" + to_string(get_epoch());
+        auto& benchConfig = BenchmarkConfig::getInstance();
+        for(int i = 0; i < benchConfig.getNthreads(); i++){
+          add_log_to_nc(log.c_str(), log.size(), i);
+        }
+
+        // start the worker threads
+        std::lock_guard<std::mutex> lk((sync_util::sync_logger::m));
+        sync_util::sync_logger::toLeader = true ;
+        std::cout << "notify a new leader is elected!\n" ;
+        //sync_util::sync_logger::worker_running = true;
+        sync_util::sync_logger::cv.notify_one();
+
+        // terminate the exchange-watermark server
+        sync_util::sync_logger::exchange_running = false;
+        break;
+      }
+    }
+    return 0;
+  });
+}
+
+static void setup_leader_election_callback()
+{
+  register_leader_election_callback([&](int control) { // communicate with third party: Paxos
+    // happens on the learner for case 0 and case 2, 3
+    uint32_t aa = mako::getCurrentTimeMillis();
+    Warning("Receive a control command:%d, current ms: %llu", control, aa);
+    switch (control) {
+#if defined(FAIL_NEW_VERSION)
+      case 0: {
+        std::cout<<"Implement a new fail recovery!"<<std::endl;
+        sync_util::sync_logger::exchange_running = false;
+        auto& benchConfig = BenchmarkConfig::getInstance();
+        sync_util::sync_logger::failed_shard_index = benchConfig.getShardIndex();
+        sync_util::sync_logger::client_control(0, benchConfig.getShardIndex()); // in bench.cc register_fasttransport_for_bench
+        break;
+      }
+      case 2: {
+        // Wait for FVW in the old epoch (w * 10 + epoch); this is very important in our new implementation
+        // Single timestamp system: collect all shard watermarks and use maximum
+        uint32_t max_watermark = 0;
+        auto& benchConfig = BenchmarkConfig::getInstance();
+        for (int i=0; i<benchConfig.getNshards(); i++) {
+          int clusterRoleLocal = mako::LOCALHOST_CENTER_INT;
+          if (i==0) 
+            clusterRoleLocal = mako::LEARNER_CENTER_INT;
+          mako::NFSSync::wait_for_key("fvw_"+std::to_string(i), 
+                                          benchConfig.getConfig()->shard(0, clusterRoleLocal).host.c_str(), benchConfig.getConfig()->mports[benchConfig.getClusterRole()]);
+          std::string w_i = mako::NFSSync::get_key("fvw_"+std::to_string(i), 
+                                                      benchConfig.getConfig()->shard(0, clusterRoleLocal).host.c_str(), 
+                                                      benchConfig.getConfig()->mports[clusterRoleLocal]);
+          std::cout<<"get fvw, " << clusterRoleLocal << ", fvw_"+std::to_string(i)<<":"<<w_i<<std::endl;
+          uint32_t watermark = std::stoi(w_i);
+          max_watermark = std::max(max_watermark, watermark);
+        }
+
+        sync_util::sync_logger::update_stable_timestamp(get_epoch()-1, max_watermark);
+        sync_util::sync_logger::client_control(1, benchConfig.getShardIndex());
+
+        // Start transactions in new epoch
+        std::lock_guard<std::mutex> lk((sync_util::sync_logger::m));
+        sync_util::sync_logger::toLeader = true ;
+        std::cout << "notify a new leader is elected!\n" ;
+        //sync_util::sync_logger::worker_running = true;
+        sync_util::sync_logger::cv.notify_one();
+        auto x0 = std::chrono::high_resolution_clock::now() ;
+        break;
+      }
+#else
+      // for the partial datacenter failure
+      case 0: {
+        // 0. stop exchange client + server on the new leader (learner)
+        sync_util::sync_logger::exchange_running = false;
+        // 1. issue a control command to all other leader partition servers to
+        //    1.1 pause other servers DB threads 
+        //    1.2 config update 
+        //    1.3 issue no-ops within the old epoch
+        //    1.4 start the controller
+        auto& benchConfig = BenchmarkConfig::getInstance();
+        sync_util::sync_logger::failed_shard_index = benchConfig.getShardIndex();
+
+        auto x0 = std::chrono::high_resolution_clock::now() ;
+        sync_util::sync_logger::client_control(0, benchConfig.getShardIndex()); // in bench.cc register_fasttransport_for_bench
+        auto x1 = std::chrono::high_resolution_clock::now() ;
+        printf("first connection:%d\n",
+            std::chrono::duration_cast<std::chrono::microseconds>(x1-x0).count());
+        break;
+      }
+      case 2: {// notify that you're the new leader; PREPARE
+         auto& benchConfig = BenchmarkConfig::getInstance();
+        sync_util::sync_logger::client_control(1, benchConfig.getShardIndex());
+         // wait for Paxos logs replicated
+         auto x0 = std::chrono::high_resolution_clock::now() ;
+         WAN_WAIT_TIME;
+         auto x1 = std::chrono::high_resolution_clock::now() ;
+         printf("replicated:%d\n",
+            std::chrono::duration_cast<std::chrono::microseconds>(x1-x0).count());
+         break;
+      }
+      case 3: {  // COMMIT
+        std::lock_guard<std::mutex> lk((sync_util::sync_logger::m));
+        sync_util::sync_logger::toLeader = true ;
+        std::cout << "notify a new leader is elected!\n" ;
+        //sync_util::sync_logger::worker_running = true;
+        sync_util::sync_logger::cv.notify_one();
+        auto x0 = std::chrono::high_resolution_clock::now() ;
+        auto& benchConfig = BenchmarkConfig::getInstance();
+        sync_util::sync_logger::client_control(2, benchConfig.getShardIndex());
+        auto x1 = std::chrono::high_resolution_clock::now() ;
+        printf("second connection:%d\n",
+            std::chrono::duration_cast<std::chrono::microseconds>(x1-x0).count());
+        break;
+      }
+      // for the datacenter failure, triggered on p1
+      case 4: {
+        // send a message to all p1 follower nodes within the same datacenter
+        auto& benchConfig = BenchmarkConfig::getInstance();
+        sync_util::sync_logger::client_control(4, benchConfig.getShardIndex());
+        break;
+      }
+#endif
+    }
+  });
+}
+
+static void cleanup_and_shutdown()
+{
+  if (BenchmarkConfig::getInstance().getIsReplicated()) { 
+    std::this_thread::sleep_for(2s);
+    pre_shutdown_step();
+    shutdown_paxos();
+  }
+
+  sync_util::sync_logger::shutdown();
+  std::quick_exit( EXIT_SUCCESS );
+}
+
+static void run_latency_tracking()
+{
+  auto& benchConfig = BenchmarkConfig::getInstance();
+  int leader_config = benchConfig.getLeaderConfig();
+#if defined(TRACKING_LATENCY)
+  if(leader_config) {
+        const auto& advanceWatermarkTracker = benchConfig.getAdvanceWatermarkTracker();
+        uint32_t latency_ts = 0;
+        std::map<uint32_t, uint32_t> ordered(sample_transaction_tracker.begin(),
+                                                           sample_transaction_tracker.end());
+        int valid_cnt = 0;
+        std::vector<float> latencyVector ;
+        for (auto it: ordered) {  // cid => updated time
+            int i = 0;
+            for (; i < advanceWatermarkTracker.size(); i++) { // G => updated time
+                if (advanceWatermarkTracker[i].first >= it.first) break;
+            }
+            if (i < advanceWatermarkTracker.size() && advanceWatermarkTracker[i].first >= it.first) {
+                latency_ts += advanceWatermarkTracker[i].second - it.second;
+                latencyVector.emplace_back(advanceWatermarkTracker[i].second - it.second) ;
+                valid_cnt++;
+                // std::cout << "Transaction: " << it.first << " takes "
+                //          << (advanceWatermarkTracker[i].second - it.second) << " ms" 
+                //          << ", end_time: " << advanceWatermarkTracker[i].second 
+                //          << ", st_time: " << it.second << std::endl;
+            } else { // incur only for last several transactions
+
+            }
+        }
+        if (latencyVector.size() > 0) {
+            std::cout << "averaged latency: " << latency_ts / valid_cnt << std::endl;
+            std::sort (latencyVector.begin(), latencyVector.end());
+            std::cout << "10% latency: " << latencyVector[(int)(valid_cnt *0.1)]  << std::endl;
+            std::cout << "50% latency: " << latencyVector[(int)(valid_cnt *0.5)]  << std::endl;
+            std::cout << "90% latency: " << latencyVector[(int)(valid_cnt *0.9)]  << std::endl;
+            std::cout << "95% latency: " << latencyVector[(int)(valid_cnt *0.95)]  << std::endl;
+            std::cout << "99% latency: " << latencyVector[(int)(valid_cnt *0.99)]  << std::endl;
+        }
+  }
+#endif
 }
 
 #endif

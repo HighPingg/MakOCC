@@ -41,6 +41,9 @@ jobs:
 
       - name: Run tests - simple 2 shards without replication 
         run: ./ci/ci.sh shardNoReplication
+      
+      - name: Run tests - simple 1 shard with replication 
+        run: ./ci/ci.sh run_1shard_replication
 
       - name: Cleanup
         if: always()

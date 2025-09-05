@@ -24,6 +24,10 @@ run_2shard_no_replication() {
     ./examples/test_2shard_no_replication.sh
 }
 
+run_1shard_replication() {
+    ./examples/test_1shard_replication.sh
+}
+
 # Main entry point with command parsing
 case "${1:-}" in
     compile)
@@ -38,12 +42,16 @@ case "${1:-}" in
     shardNoReplication)
         run_2shard_no_replication
         ;;
+    shard1Replication)
+        run_1shard_replication
+        ;;
     all)
         # Run all steps in sequence
         compile
         run_simple_transaction
         run_simple_paxos
         run_2shard_no_replication
+        run_1shard_replication
         echo "All CI steps completed successfully!"
         ;;
 esac

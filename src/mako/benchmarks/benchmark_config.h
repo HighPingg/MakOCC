@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <atomic>
+#include <utility>
 #include "lib/configuration.h"
 #include "lib/common.h"
 
@@ -40,7 +42,10 @@ class BenchmarkConfig {
           no_reset_counters_(0),
           backoff_aborted_transaction_(0),
           use_hashtable_(0),
-          is_micro_(0) {} // if run micro-based workload
+          is_micro_(0), // if run micro-based workload
+          end_received_(0),
+          end_received_leader_(0),
+          replay_batch_(0) {}
       
       // Member variables
       size_t nthreads_;
@@ -71,6 +76,14 @@ class BenchmarkConfig {
       int is_replicated_;
       string paxos_proc_name_;
       std::vector<std::string> paxos_config_file_;
+      
+      // Atomic variables for Paxos termination tracking
+      std::atomic<int> end_received_;
+      std::atomic<int> end_received_leader_;
+      std::atomic<int> replay_batch_;
+      
+      // Watermark tracking for latency measurements
+      std::vector<std::pair<uint32_t, uint32_t>> advanceWatermarkTracker_;
 
   public:
       // Delete copy/move constructors
@@ -143,6 +156,23 @@ class BenchmarkConfig {
       void setIsReplicated(int replicated) { is_replicated_ = replicated; }
       void setPaxosProcName(std::string paxos_proc_name) { paxos_proc_name_ = paxos_proc_name; }
       void setPaxosConfigFile(const std::vector<std::string>& paxos_config_file) { paxos_config_file_ = paxos_config_file; }
+      
+      // Getters and setters for Paxos termination tracking
+      int getEndReceived() const { return end_received_.load(); }
+      int getEndReceivedLeader() const { return end_received_leader_.load(); }
+      void setEndReceived(int value) { end_received_.store(value); }
+      void setEndReceivedLeader(int value) { end_received_leader_.store(value); }
+      void incrementEndReceived() { end_received_.fetch_add(1); }
+      void incrementEndReceivedLeader() { end_received_leader_.fetch_add(1); }
+      
+      // Getters and setters for replay batch tracking
+      int getReplayBatch() const { return replay_batch_.load(); }
+      void setReplayBatch(int value) { replay_batch_.store(value); }
+      void incrementReplayBatch() { replay_batch_.fetch_add(1); }
+      
+      // Getters and setters for watermark tracking
+      std::vector<std::pair<uint32_t, uint32_t>>& getAdvanceWatermarkTracker() { return advanceWatermarkTracker_; }
+      const std::vector<std::pair<uint32_t, uint32_t>>& getAdvanceWatermarkTracker() const { return advanceWatermarkTracker_; }
 };
 
 #endif /* _NDB_BENCHMARK_CONFIG_H_ */
