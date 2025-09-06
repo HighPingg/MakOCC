@@ -701,6 +701,7 @@ endfunction()
 
 add_apps(dbtest src/mako/benchmarks/dbtest.cc)
 add_apps(simpleTransaction examples/simpleTransaction.cc)
+add_apps(simpleTransactionRep examples/simpleTransactionRep.cc)
 add_apps(simplePaxos examples/simplePaxos.cc)
 
 # Enable borrow checking for dbtest
