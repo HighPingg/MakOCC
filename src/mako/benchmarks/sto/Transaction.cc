@@ -767,8 +767,8 @@ inline void Transaction::serialize_util(unsigned nwriteset, bool on_remote, int 
         //     Warning("add a log to nc, par_id:%d,", TThread::getPartitionID());
         //     usleep(10*1000);
         //   }
-        if (!on_remote)  // FIX me: merge the logs from helper threads instead of a separate log
-          add_log_to_nc((char *)queueLog, pos, TThread::getPartitionID (), batch_size); // the partitionID for the helper thread
+        // FIX me: merge the logs from helper threads instead of a separate log
+        add_log_to_nc((char *)queueLog, pos, TThread::getPartitionID (), batch_size); // the partitionID for the helper thread
       }
       instance->resetMemory();
     }

@@ -12,7 +12,7 @@ echo "========================================="
 
 skill dbtest
 # Clean up old log files
-rm -f shard0*.log nfs_*.log
+rm -f shard0*.log nfs_sync_*
 
 # Start shard 0 in background
 echo "Starting shard 0..."
