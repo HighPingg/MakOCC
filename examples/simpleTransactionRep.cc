@@ -7,21 +7,11 @@
 #include <thread>
 #include <vector>
 #include <mako.hh>
-#include <examples/common.h>
+#include "examples/common.h"
+#include "benchmarks/rpc_setup.h"
 
 using namespace std;
-
-static std::vector<FastTransport *> server_transports;
-static atomic<int> set_server_transport(0);
-
-// ----------------------------- tpcc.cc simple modify -------------------------------
-// multiple shards with erpc, helper threads
-
-// distributed-key
-
-// dummy for distributed transactions
-// ----------------------------- tpcc ENDs -------------------------------
-
+using namespace mako;
 
 class TransactionWorker {
 public:
@@ -171,7 +161,7 @@ int main(int argc, char **argv) {
     // This variable is accessible until program ends as follower replays uses it
     TSharedThreadPoolMbta replicated_db (benchConfig.getNthreads()+1);
     init_env(replicated_db) ;
-    
+
     printf("=== Mako Transaction Tests  ===\n");
     
     abstract_db * db = initWithDB();

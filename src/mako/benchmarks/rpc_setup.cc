@@ -1,6 +1,6 @@
 // Implementation of TPCC setup utilities extracted from tpcc.cc
 
-#include "tpcc_setup.h"
+#include "rpc_setup.h"
 
 #include <pthread.h>
 #include <unistd.h>
@@ -14,7 +14,7 @@
 
 
 using namespace std;
-using namespace mako_tpcc_setup;
+using namespace mako;
 
 namespace {
 
@@ -100,7 +100,7 @@ void erpc_server(
 
 } // anonymous namespace
 
-void mako_tpcc_setup::setup_helper(
+void mako::setup_helper(
   abstract_db *db,
   const std::map<std::string, abstract_ordered_index *> &open_tables,
   const std::map<std::string, std::vector<abstract_ordered_index *>> &partitions,
@@ -131,7 +131,7 @@ void mako_tpcc_setup::setup_helper(
   }
 }
 
-void mako_tpcc_setup::setup_erpc_server()
+void mako::setup_erpc_server()
 {
   auto &cfg = BenchmarkConfig::getInstance();
   auto &server_transports = cfg.getServerTransports();
@@ -169,7 +169,7 @@ void mako_tpcc_setup::setup_erpc_server()
   }
 }
 
-void mako_tpcc_setup::stop_erpc_server()
+void mako::stop_erpc_server()
 {
   auto &cfg = BenchmarkConfig::getInstance();
   auto &server_transports = cfg.getServerTransports();

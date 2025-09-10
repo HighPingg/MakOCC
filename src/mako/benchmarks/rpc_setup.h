@@ -1,6 +1,6 @@
-// TPCC setup helpers extracted from tpcc.cc
-#ifndef MAKO_BENCHMARKS_TPCC_SETUP_H
-#define MAKO_BENCHMARKS_TPCC_SETUP_H
+// RPC setup helpers extracted from tpcc.cc
+#ifndef MAKO_BENCHMARKS_RPC_SETUP_H
+#define MAKO_BENCHMARKS_RPC_SETUP_H
 
 #include <thread>
 #include <vector>
@@ -12,10 +12,10 @@
 #include "bench.h"
 #include <unordered_map>
 
-// Decoupled setup helpers for TPCC benchmark: eRPC server and helper threads.
+// Decoupled setup helpers for RPC benchmark: eRPC server and helper threads.
 // These functions mirror the original logic in tpcc.cc but are now reusable.
 
-namespace mako_tpcc_setup {
+namespace mako {
 
 // Launch helper threads for all remote warehouses across shards.
 void setup_helper(
@@ -30,6 +30,6 @@ void setup_erpc_server();
 // Stop all eRPC servers previously started by setup_erpc_server().
 void stop_erpc_server();
 
-} // namespace mako_tpcc_setup
+} // namespace mako
 
-#endif // MAKO_BENCHMARKS_TPCC_SETUP_H
+#endif // MAKO_BENCHMARKS_RPC_SETUP_H

@@ -35,7 +35,7 @@
 #include "atomic"
 #include <chrono>
 #include "benchmarks/benchmark_config.h"
-#include "benchmarks/tpcc_setup.h"
+#include "benchmarks/rpc_setup.h"
 
 using namespace std;
 using namespace util;
@@ -3643,7 +3643,7 @@ tpcc_do_test(abstract_db *db, int argc, char **argv, int run = 0, bench_runner *
 {
   if (run==1){
     ((tpcc_bench_runner*)rc)->run();
-    mako_tpcc_setup::stop_erpc_server();
+    mako::stop_erpc_server();
     return rc; // rc is same object as r below
   }
   if (TThread::get_is_micro()) {
@@ -3741,8 +3741,8 @@ tpcc_do_test(abstract_db *db, int argc, char **argv, int run = 0, bench_runner *
   tpcc_bench_runner *r = NULL;
   r = new tpcc_bench_runner(db, f_mode==1);
   // the erpc server and redirect requests to helper threads on the server side
-  mako_tpcc_setup::setup_erpc_server();
-  mako_tpcc_setup::setup_helper(
+  mako::setup_erpc_server();
+  mako::setup_helper(
     db,
     r->get_open_tables_ref(),
     r->get_partitions(),

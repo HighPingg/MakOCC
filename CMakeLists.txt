@@ -436,7 +436,7 @@ set(MAKO_SRCFILES
   "${W}/benchmarks/bid.cc"
   "${W}/benchmarks/queue.cc"
   "${W}/benchmarks/tpcc.cc"
-  "${W}/benchmarks/tpcc_setup.cc"
+  "${W}/benchmarks/rpc_setup.cc"
   #"${W}/benchmarks/tpcc_simple.cc"
   #"${W}/benchmarks/ycsb.cc"
   "${W}/benchmarks/sync_util_init.cc"
