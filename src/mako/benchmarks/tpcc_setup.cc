@@ -101,7 +101,6 @@ void erpc_server(
 } // anonymous namespace
 
 void mako_tpcc_setup::setup_helper(
-  std::vector<std::thread> &helper_threads,
   abstract_db *db,
   const std::map<std::string, abstract_ordered_index *> &open_tables,
   const std::map<std::string, std::vector<abstract_ordered_index *>> &partitions,
@@ -114,7 +113,7 @@ void mako_tpcc_setup::setup_helper(
     if (i / (int)NumWarehouses() == (int)cfg.getShardIndex())
       continue;
 
-    helper_threads[i] = std::thread(
+    auto t = std::thread(
       helper_server,
       i + 1,
       cfg.getCluster(),
@@ -127,7 +126,8 @@ void mako_tpcc_setup::setup_helper(
       std::cref(open_tables),
       std::cref(partitions),
       std::cref(dummy_partitions));
-    pthread_setname_np(helper_threads[i].native_handle(), ("helper_" + std::to_string(i)).c_str());
+    pthread_setname_np(t.native_handle(), ("helper_" + std::to_string(i)).c_str());
+    t.detach();
   }
 }
 

@@ -3547,18 +3547,6 @@ public:
       for (size_t i = 0; i < NumWarehouses() * NumDistrictsPerWarehouse(); i++)
         new (&g_district_ids[i]) atomic<uint64_t>(3001);
     }
-    helper_threads.resize(NumWarehousesTotal());
-    // ensure helper threads capacity; server transports handled in setup_erpc_server()
-  }
-
-  // setup helper threads and erpc-server using decoupled helpers
-  void setup_helper() {
-    mako_tpcc_setup::setup_helper(
-      helper_threads,
-      db,
-      open_tables,
-      partitions,
-      dummy_partitions);
   }
 
 protected:
@@ -3637,11 +3625,16 @@ protected:
     return ret;
   }
 
+public:
+  // Expose read-only access needed for independent setup helpers
+  const map<string, vector<abstract_ordered_index *>> & get_partitions() const { return partitions; }
+  const map<string, vector<abstract_ordered_index *>> & get_dummy_partitions() const { return dummy_partitions; }
+  const map<string, abstract_ordered_index *> & get_open_tables_ref() const { return open_tables; }
+
 private:
   map<string, vector<abstract_ordered_index *>> partitions;
-  // dummy_partitions has exact same key and number of items as partitions, but doesn't store any data
+  // dummy_partitions has all partitions from other shards, and doesn't store any data (for READ/WRITE)
   map<string, vector<abstract_ordered_index *>> dummy_partitions;
-  std::vector<std::thread> helper_threads;
   // queue holders moved into BenchmarkConfig
 };
 
@@ -3749,7 +3742,11 @@ tpcc_do_test(abstract_db *db, int argc, char **argv, int run = 0, bench_runner *
   r = new tpcc_bench_runner(db, f_mode==1);
   // the erpc server and redirect requests to helper threads on the server side
   mako_tpcc_setup::setup_erpc_server();
-  r->setup_helper();
+  mako_tpcc_setup::setup_helper(
+    db,
+    r->get_open_tables_ref(),
+    r->get_partitions(),
+    r->get_dummy_partitions());
   r->f_mode=f_mode;
   auto x1 = std::chrono::high_resolution_clock::now() ;
   printf("start worker:%d\n",
