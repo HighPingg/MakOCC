@@ -22,7 +22,7 @@ void setup_helper(
   abstract_db *db,
   const std::map<std::string, abstract_ordered_index *> &open_tables,
   const std::map<std::string, std::vector<abstract_ordered_index *>> &partitions,
-  const std::map<std::string, std::vector<abstract_ordered_index *>> &dummy_partitions);
+  const std::map<std::string, std::vector<abstract_ordered_index *>> &remote_partitions);
 
 // Launch eRPC server threads and wire up per-warehouse queues.
 void setup_erpc_server();

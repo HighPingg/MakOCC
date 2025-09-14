@@ -24,11 +24,10 @@ class BenchmarkConfig {
           nthreads_(1),
           num_erpc_server_(2), // number of erpc pull threads
           scale_factor_(1.0),
-          nshards_(1),
-          shardIndex_(0),
+          nshards_(1), // default 1 shard
+          shardIndex_(0), // default on the shard-0
           cluster_("localhost"),
           clusterRole_(0), 
-          workload_type_(1), // 0: simpleShards (debug); 1: tpcc/microbenchmark
           config_(nullptr),
           running_(true),
           control_mode_(0),
@@ -57,7 +56,6 @@ class BenchmarkConfig {
       size_t shardIndex_;
       std::string cluster_;
       int clusterRole_;
-      size_t workload_type_;
       transport::Configuration* config_;
       volatile bool running_;
       volatile int control_mode_;
@@ -113,7 +111,6 @@ class BenchmarkConfig {
       size_t getShardIndex() const { return shardIndex_; }
       const std::string& getCluster() const { return cluster_; }
       int getClusterRole() const { return clusterRole_; }
-      size_t getWorkloadType() const { return workload_type_; }
       transport::Configuration* getConfig() const { return config_; }
       bool isRunning() const { return running_; }
       int getControlMode() const { return control_mode_; }
@@ -154,7 +151,6 @@ class BenchmarkConfig {
       void setShardIndex(size_t idx) { shardIndex_ = idx; }
       void setCluster(const std::string& c) { cluster_ = c; }
       void setClusterRole(int role) { clusterRole_ = role; }
-      void setWorkloadType(size_t type) { workload_type_ = type; }
       void setConfig(transport::Configuration* cfg) { config_ = cfg; }
       void setRunning(bool r) { running_ = r; }
       void setControlMode(int mode) { control_mode_ = mode; }

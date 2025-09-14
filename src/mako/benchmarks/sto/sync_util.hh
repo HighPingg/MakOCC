@@ -243,8 +243,7 @@ namespace sync_util {
             auto sclient = new mako::ShardClient(config->configFile,
                                                    cluster,
                                                    shardIdx,
-                                                   id, /* par_id */
-                                                   1 /*tpc-c*/);
+                                                   id);
             // send the exchange requests frequently
             int fail_cnt=0;
             while (exchange_running) {
@@ -283,8 +282,7 @@ namespace sync_util {
             auto static control_sclient = new mako::ShardClient(config->configFile,
                                                    cluster,
                                                    shardIdx,
-                                                   id, /* par_id */
-                                                   1 /*tpc-c*/);
+                                                   id);
             uint32_t dstShardIndex=0;
             for (int i=0; i<nshards; i++) {
                 if (i==shardIdx) continue;
@@ -311,8 +309,7 @@ namespace sync_util {
             auto static control_sclient = new mako::ShardClient(config->configFile,
                                                    cluster,
                                                    shardIdx,
-                                                   id, /* par_id */
-                                                   1 /*tpc-c*/);
+                                                   id);
             uint32_t dstShardIndex=0;
             
             bool is_datacenter_failure = control >= 4;

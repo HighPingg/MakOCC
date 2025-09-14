@@ -754,7 +754,7 @@ public:
     }
     virtual void print(std::ostream& w, const TransItem& item) const;
     virtual unsigned long long int get_table_id() const;
-    virtual bool get_is_dummy() const;
+    virtual bool get_is_remote() const;
 };
 
 typedef TObject Shared;

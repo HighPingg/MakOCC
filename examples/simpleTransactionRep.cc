@@ -25,13 +25,9 @@ public:
         mbta_ordered_index::mbta_type::thread_init();
     }
 
-    static abstract_ordered_index* open_table(abstract_db *db, const char *name) {
-        return db->open_index(name, 1, false, false);
-    }
-
     void test_basic_transactions() {
         printf("\n--- Testing Basic Transactions ---\n");
-        static abstract_ordered_index *table = open_table(db, "customer_0");
+        static abstract_ordered_index *table = db->open_index("customer_0");
         std::this_thread::sleep_for(std::chrono::seconds(1));
 
         // Write 5 keys

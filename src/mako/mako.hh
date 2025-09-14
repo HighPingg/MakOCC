@@ -120,7 +120,6 @@ static abstract_db* initWithDB() {
   return db; 
 }
 
-
 static void register_paxos_follower_callback(TSharedThreadPoolMbta& replicated_db, int thread_id)
 {
   if (!BenchmarkConfig::getInstance().getIsReplicated()) { return ; }
@@ -647,16 +646,6 @@ static void init_env(TSharedThreadPoolMbta& replicated_db) {
     setup_transport_callbacks();
     setup_leader_election_callbacks();
 
-    // replicated_db is db-instance wrapper if replicated is enabled && on followers/learners
-    if (!benchConfig.getLeaderConfig()) {
-      abstract_db * db = replicated_db.getDBWrapper(benchConfig.getNthreads())->getDB () ;
-      // pre-initialize all tables to avoid table creation data race
-      // tpcc: benchCOnfig.getScaleFactor()*11+1
-      int max_preallocate_opened = ((size_t)benchConfig.getScaleFactor())*11+1;
-      for (int i=0;i<max_preallocate_opened;i++) {
-        db->open_index(i+1);
-      }
-    }
 
     char** argv_paxos = prepare_paxos_args(benchConfig.getPaxosConfigFile(), benchConfig.getPaxosProcName());
     std::vector<std::string> ret = setup(18, argv_paxos);
