@@ -29,7 +29,7 @@ run_1shard_replication() {
 }
 
 run_2shard_replication() {
-    bash ./examples/test_1shard_replication.sh
+    bash ./examples/test_2shard_replication.sh
 }
 
 run_1shard_replication_simple() {

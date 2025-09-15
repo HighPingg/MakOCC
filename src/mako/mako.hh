@@ -117,6 +117,7 @@ static abstract_db* initWithDB() {
                                benchConfig.getConfig());
   
   abstract_db *db = new mbta_wrapper; // on the leader replica
+  db->init() ;
   return db; 
 }
 
@@ -190,6 +191,10 @@ static void register_paxos_follower_callback(TSharedThreadPoolMbta& replicated_d
         sync_util::sync_logger::local_timestamp_[par_id].store(commit_info.timestamp, memory_order_release) ;
         uint32_t w = sync_util::sync_logger::retrieveW();
         // Single timestamp safety check
+        // Warning("checking par_id:%d, un_replay_logs_:%d,ours:%u,w:%u", 
+        //     par_id, un_replay_logs_.size(),
+        //     commit_info.timestamp,w);
+
         if (sync_util::sync_logger::safety_check(commit_info.timestamp, w)) { // pass safety check
           benchConfig.incrementReplayBatch();
           treplay_in_same_thread_opt_mbta_v2(par_id, (char*)log, len, db, benchConfig.getNthreads());
@@ -642,6 +647,9 @@ static void init_env(TSharedThreadPoolMbta& replicated_db) {
   setup_sync_util_callbacks();
 
   if (BenchmarkConfig::getInstance().getIsReplicated()) {
+    abstract_db *db = replicated_db.getDBWrapper(benchConfig.getNthreads())->getDB () ;
+    db->init() ;
+
     // failures handling callbacks
     setup_transport_callbacks();
     setup_leader_election_callbacks();

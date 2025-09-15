@@ -206,6 +206,7 @@ namespace sync_util {
                     Warning("%s", local_w_msg.c_str());
                 }*/
             }
+            std::cout << "END of advancer" << std::endl;
         }
 
         // for the server

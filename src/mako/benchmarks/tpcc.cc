@@ -3488,14 +3488,13 @@ public:
       printf("reinitializing partitions under failure\n");
         string nCount[12] = {"customer", "customer_name_idx", "district", "history", "new_order", "oorder", 
                              "oorder_c_id_idx", "order_line", "stock", "stock_data", "warehouse", "item"};
-        // using existing replaly tables so db->get_index_by_table_id here is "retrieval" instead of "creation"
         int table_id = 0;
         for (int i=0; i<12; i++) {
             if (nCount[i] != "item") {
                 vector<abstract_ordered_index *> ret(BenchmarkConfig::getInstance().getNthreads());
                 for (int j=0; j<BenchmarkConfig::getInstance().getNthreads(); j++) {
                     table_id += 1;
-                    ret[j] = db->get_index_by_table_id(table_id) ;
+                    ret[j] = db->open_index(std::to_string(table_id)) ;
                 }
                 partitions[nCount[i]] = ret;
             } else {

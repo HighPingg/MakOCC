@@ -143,7 +143,7 @@ main(int argc, char **argv)
   TSharedThreadPoolMbta replicated_db (benchConfig.getNthreads()+1);
   init_env(replicated_db) ;
 
-  abstract_db * db = initWithDB();
+  abstract_db * db = initWithDB(); // Some init is required for followers/learners
   // Run worker threads on the leader
   if (benchConfig.getLeaderConfig()) {
     run_workers(db);

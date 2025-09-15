@@ -931,7 +931,9 @@ public:
   // Track created tables by (name, shard_index) to avoid duplicates
   std::map<std::tuple<std::string,int>, int> tables_taken;
 
-  mbta_wrapper() {
+  mbta_wrapper() { /* Avoid doing something here! */}
+
+  void init() {
     preallocate_open_index() ;
 
     auto& benchConfig = BenchmarkConfig::getInstance();
@@ -1126,9 +1128,21 @@ public:
 
     // table-id is between [shard_index*mako::NUM_TABLES_PER_SHARD+1, shard_index*mako::NUM_TABLES_PER_SHARD+1+mako::NUM_TABLES_PER_SHARD]
     if (!(available_table_id >= shard_index*mako::NUM_TABLES_PER_SHARD+1 
-        && available_table_id <= shard_index*mako::NUM_TABLES_PER_SHARD+mako::NUM_TABLES_PER_SHARD)) {
+        && available_table_id <= (shard_index*mako::NUM_TABLES_PER_SHARD+mako::NUM_TABLES_PER_SHARD))) {
           std::cout << "We don't have sufficient tables for you, please don't create too many tables more than " 
-                    << mako::NUM_TABLES_PER_SHARD << " on each shard." << std::endl;
+                    << mako::NUM_TABLES_PER_SHARD << " on each shard."
+                    << " Assigned table_id (strange):" << available_table_id
+                    << ", expected range is:" << (shard_index*mako::NUM_TABLES_PER_SHARD+1)
+                    << "," << (shard_index*mako::NUM_TABLES_PER_SHARD+mako::NUM_TABLES_PER_SHARD) 
+                    << ", shard_index: " << BenchmarkConfig::getInstance().getShardIndex()
+                    << ", shard_index(args) [strange]:" << shard_index << std::endl;
+          
+          std::cout << "All existing tables:" << std::endl;
+          for (const auto& [key, value] : tables_taken) {
+              const auto& [str, num] = key;  // unpack the tuple
+              std::cout << "(" << str << ", " << num << ") -> " << value << "\n";
+          }
+          
           std::exit(EXIT_FAILURE);
         }
 

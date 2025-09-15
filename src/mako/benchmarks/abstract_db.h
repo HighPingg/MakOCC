@@ -153,6 +153,7 @@ public:
   close_index(abstract_ordered_index *idx) = 0;
 
   virtual void preallocate_open_index() = 0;
+  virtual void init() = 0;
 
   virtual abstract_ordered_index *
   open_index(const std::string &name, int shard_index = -1) = 0;
