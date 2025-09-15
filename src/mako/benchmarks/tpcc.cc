@@ -3751,9 +3751,9 @@ tpcc_do_test(abstract_db *db, int argc, char **argv, int run = 0, bench_runner *
   mako::setup_erpc_server();
   mako::setup_helper(
     db,
-    r->get_open_tables_ref(),
+    r->get_open_tables_ref()/*,
     r->get_partitions(),
-    r->get_remote_partitions());
+    r->get_remote_partitions()*/);
   r->f_mode=f_mode;
   auto x1 = std::chrono::high_resolution_clock::now() ;
   printf("start worker:%d\n",

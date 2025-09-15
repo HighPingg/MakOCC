@@ -178,7 +178,7 @@ void run_tests(abstract_db *db) {
 
 int main() {
     abstract_db *db = new mbta_wrapper;
-    
+    db->init() ;
     printf("=== Mako Transaction Tests  ===\n");
     
     auto config = new transport::Configuration(

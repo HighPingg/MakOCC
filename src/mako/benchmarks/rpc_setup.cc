@@ -37,9 +37,9 @@ void helper_server(
   abstract_db *db,
   mako::HelperQueue *queue,
   mako::HelperQueue *queue_response,
-  const std::map<std::string, abstract_ordered_index *> &open_tables,
+  const std::map<std::string, abstract_ordered_index *> &open_tables/*,
   const std::map<std::string, std::vector<abstract_ordered_index *>> &partitions,
-  const std::map<std::string, std::vector<abstract_ordered_index *>> &remote_partitions)
+  const std::map<std::string, std::vector<abstract_ordered_index *>> &remote_partitions*/)
 {
   scoped_db_thread_ctx ctx(db, true, 1);
   TThread::set_mode(1);
@@ -56,7 +56,7 @@ void helper_server(
 
   mako::ShardServer *ss = new mako::ShardServer(
     config->configFile, running_shardIndex, shardIdx, par_id);
-  ss->Register(db, queue, queue_response, open_tables, partitions, remote_partitions);
+  ss->Register(db, queue, queue_response, open_tables/*, partitions, remote_partitions*/);
   ss->Run(); // event-driven
 }
 
@@ -102,9 +102,9 @@ void erpc_server(
 
 void mako::setup_helper(
   abstract_db *db,
-  const std::map<std::string, abstract_ordered_index *> &open_tables,
+  const std::map<std::string, abstract_ordered_index *> &open_tables /*,
   const std::map<std::string, std::vector<abstract_ordered_index *>> &partitions,
-  const std::map<std::string, std::vector<abstract_ordered_index *>> &remote_partitions)
+  const std::map<std::string, std::vector<abstract_ordered_index *>> &remote_partitions*/)
 {
   auto &cfg = BenchmarkConfig::getInstance();
   auto &queue_holders = cfg.getQueueHolders();
@@ -123,9 +123,9 @@ void mako::setup_helper(
       db,
       queue_holders[i],
       queue_holders_response[i],
-      std::cref(open_tables),
+      std::cref(open_tables)/*,
       std::cref(partitions),
-      std::cref(remote_partitions));
+      std::cref(remote_partitions)*/);
     pthread_setname_np(t.native_handle(), ("helper_" + std::to_string(i)).c_str());
     t.detach();
   }

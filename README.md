@@ -22,7 +22,7 @@ Configure and compile
 ```bash
 make 
 ```
-You should now see libmako.a and a few examples in the build folder.
+You should now see libmako.a and a few examples in the build folder, and run all examples via `./ci/ci.sh all`
 
 <!-- 
 Run the helloworld:

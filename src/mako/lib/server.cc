@@ -31,15 +31,15 @@ namespace mako
 
     void ShardReceiver::Register(abstract_db *dbX,
                                  const map<string, abstract_ordered_index *> &open_tablesX,
-                                 const map<int, abstract_ordered_index *> &open_tables_table_idX,
+                                 const map<int, abstract_ordered_index *> &open_tables_table_idX /*,
                                  const map<string, vector<abstract_ordered_index *>> &partitionsX,
-                                 const map<string, vector<abstract_ordered_index *>> &remote_partitionsX)
+                                 const map<string, vector<abstract_ordered_index *>> &remote_partitionsX*/)
     {
         db = dbX;
         open_tables = open_tablesX;
         open_tables_table_id = open_tables_table_idX;
-        partitions = partitionsX;
-        remote_partitions = remote_partitionsX;
+        // partitions = partitionsX;
+        // remote_partitions = remote_partitionsX;
 
         txn_obj_buf.reserve(str_arena::MinStrReserveLength);
         txn_obj_buf.resize(db->sizeof_txn_object(0));
@@ -548,22 +548,22 @@ namespace mako
     void ShardServer::Register(abstract_db *dbX,
                                mako::HelperQueue *queueX,
                                mako::HelperQueue *queueY,
-                               const map<string, abstract_ordered_index *> &open_tablesX,
+                               const map<string, abstract_ordered_index *> &open_tablesX /*,
                                const map<string, vector<abstract_ordered_index *>> &partitionsX,
-                               const map<string, vector<abstract_ordered_index *>> &remote_partitionsX)
+                               const map<string, vector<abstract_ordered_index *>> &remote_partitionsX*/)
     {
         db = dbX;
         queue = queueX;
         queue_response = queueY;
         open_tables = open_tablesX;
-        partitions = partitionsX;
-        remote_partitions = remote_partitionsX;
+        // partitions = partitionsX;
+        // remote_partitions = remote_partitionsX;
 
         for (auto &t : open_tablesX) {
             open_tables_table_id[t.second->get_table_id()] = t.second;
         }
 
-        shardReceiver->Register(db, open_tables, open_tables_table_id, partitions, remote_partitions);
+        shardReceiver->Register(db, open_tables, open_tables_table_id /*, partitions, remote_partitions*/);
     }
 
     void ShardServer::Run()
