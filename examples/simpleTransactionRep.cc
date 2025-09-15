@@ -27,8 +27,16 @@ public:
 
     void test_basic_transactions() {
         printf("\n--- Testing Basic Transactions ---\n");
-        static abstract_ordered_index *table = db->open_index("customer_0");
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        
+        int home_shard_index = BenchmarkConfig::getInstance().getShardIndex() ;
+
+        if (home_shard_index == 1) { return ; }
+        abstract_ordered_index *table = db->open_index("customer_0", home_shard_index);
+
+        abstract_ordered_index *remote_table ;
+        if (BenchmarkConfig::getInstance().getNshards()==2) {
+            remote_table = db->open_index("customer_0", home_shard_index==0?1:0);
+        }
 
         // Write 5 keys
         for (size_t i = 0; i < 5; i++) {
@@ -38,6 +46,14 @@ public:
                                std::string(mako::EXTRA_BITS_FOR_VALUE, 'B');
             try {
                 table->put(txn, key, StringWrapper(value));
+
+                if (BenchmarkConfig::getInstance().getNshards()==2) {
+                    std::string key2 = "test_key2_" + std::to_string(i);
+                    std::string value2 = "test_value2_" + std::to_string(i) + 
+                                    std::string(mako::EXTRA_BITS_FOR_VALUE, 'B');
+                    remote_table->put(txn, key2, StringWrapper(value2)) ;
+                }
+
                 db->commit_txn(txn);
             } catch (abstract_db::abstract_abort_exception &ex) {
                 printf("Write aborted: %s\n", key.c_str());
@@ -70,6 +86,32 @@ public:
         }
         VERIFY(all_reads_ok, "Read and verify 5 records");
 
+        if (BenchmarkConfig::getInstance().getNshards()==2) {
+            // Read and verify 5 keys
+            bool all_reads_ok = true;
+            for (size_t i = 0; i < 5; i++) {
+                void *txn = db->new_txn(0, arena, txn_buf());
+                std::string key = "test_key2_" + std::to_string(i);
+                std::string value = "";
+                try {
+                    remote_table->get(txn, key, value);
+                    db->commit_txn(txn);
+                    
+                    std::string expected = "test_value2_" + std::to_string(i);
+                    if (value.substr(0, expected.length()) != expected) {
+                        all_reads_ok = false;
+                        break;
+                    }
+                } catch (abstract_db::abstract_abort_exception &ex) {
+                    printf("Read aborted: %s\n", key.c_str());
+                    db->abort_txn(txn);
+                    all_reads_ok = false;
+                    break;
+                }
+            }
+            VERIFY(all_reads_ok, "Read and verify 5 records on remote shards");
+        }
+
         // Scan and verify table
         auto scan_results = scan_tables(db, table);
         bool scan_ok = true;
@@ -100,16 +142,13 @@ void run_worker_tests(abstract_db *db) {
     delete worker;
 }
 
-void run_tests(abstract_db *db) {
-    // tpcc.cc general logics
-    // initialize: 1. thread init; 2. erpc threads; 3. helper threads
-    
+void run_tests(abstract_db* db) {
     // start different db worker threads - enforced
-    size_t nshards = BenchmarkConfig::getInstance().getNshards();
+    size_t nthreads = BenchmarkConfig::getInstance().getNthreads();
     std::vector<std::thread> worker_threads;
     
     // Create a worker thread for each shard
-    for (size_t i = 0; i < nshards; ++i) {
+    for (size_t i = 0; i < nthreads; ++i) {
         worker_threads.emplace_back(run_worker_tests, db);
     }
     
@@ -160,10 +199,36 @@ int main(int argc, char **argv) {
 
     printf("=== Mako Transaction Tests  ===\n");
     
-    abstract_db * db = initWithDB();
+    abstract_db* db = initWithDB();
+
+    if (benchConfig.getLeaderConfig()) {
+        int home_shard_index = benchConfig.getShardIndex() ;
+
+        // pre-declare all local tables
+        abstract_ordered_index *table = db->open_index("customer_0", home_shard_index);
+        abstract_ordered_index *table2 = db->open_index("customer_0", home_shard_index); // table and table2 are the exactly same table!
+        abstract_ordered_index *table3 = db->open_index("customer_1", home_shard_index);
+
+        if (benchConfig.getNshards()==2) {
+            // open remote table handlers
+            abstract_ordered_index *table4 = db->open_index("customer_0", home_shard_index==0?1:0);
+        }
+        
+        mako::setup_erpc_server();
+        map<string, abstract_ordered_index*> open_tables;
+        open_tables["customer_0"] = table;
+        mako::setup_helper(db,
+            std::ref(open_tables)) ;
+        
+        std::this_thread::sleep_for(std::chrono::seconds(5)); // Wait all shards finish setup
+
+    }
+
     if (benchConfig.getLeaderConfig()) {
         run_tests(db);
     }
+
+    std::this_thread::sleep_for(std::chrono::seconds(10)); 
 
     db_close() ;
     

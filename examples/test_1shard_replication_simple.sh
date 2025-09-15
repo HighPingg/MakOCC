@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script to test 1-shard experiments with replication
+# Script to test 1-shard experiments with replication using simpleTransactionRep
 
 echo "========================================="
 echo "Testing 1-shard setup with replication using simpleTransactionRep"

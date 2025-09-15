@@ -3494,7 +3494,7 @@ public:
                 vector<abstract_ordered_index *> ret(BenchmarkConfig::getInstance().getNthreads());
                 for (int j=0; j<BenchmarkConfig::getInstance().getNthreads(); j++) {
                     table_id += 1;
-                    ret[j] = db->open_index(std::to_string(table_id)) ;
+                    ret[j] = db->get_index_by_table_id(table_id) ;
                 }
                 partitions[nCount[i]] = ret;
             } else {

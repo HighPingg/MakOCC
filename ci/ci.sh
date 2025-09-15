@@ -36,6 +36,10 @@ run_1shard_replication_simple() {
     bash ./examples/test_1shard_replication_simple.sh
 }
 
+run_2shard_replication_simple() {
+    bash ./examples/test_2shard_replication_simple.sh
+}
+
 # Main entry point with command parsing
 case "${1:-}" in
     compile)
@@ -59,6 +63,9 @@ case "${1:-}" in
     shard1ReplicationSimple)
         run_1shard_replication_simple
         ;;
+    shard2ReplicationSimple)
+        run_2shard_replication_simple
+        ;;
     all)
         # Run all steps in sequence
         compile
@@ -68,6 +75,7 @@ case "${1:-}" in
         run_1shard_replication
         run_2shard_replication
         run_1shard_replication_simple
+        run_2shard_replication_simple
         echo "All CI steps completed successfully!"
         ;;
 esac
