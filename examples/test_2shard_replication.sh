@@ -121,3 +121,6 @@ else
     tail -10 shard1-localhost.log
     exit 1
 fi
+
+ps aux | grep -i dbtest | awk "{print \$2}" | xargs kill -9 2>/dev/null
+ps aux | grep -i simplePaxos | awk "{print \$2}" | xargs kill -9 2>/dev/null

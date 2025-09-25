@@ -641,13 +641,15 @@ static char** prepare_paxos_args(const vector<string>& paxos_config_file,
   return argv_paxos;
 }
 
-static void init_env(TSharedThreadPoolMbta& replicated_db) {
+static void init_env() {
   auto& benchConfig = BenchmarkConfig::getInstance();
 
   // Setup callbacks
   setup_sync_util_callbacks();
 
   if (BenchmarkConfig::getInstance().getIsReplicated()) {
+    // We need replicated_db keep live for future replay!
+    static TSharedThreadPoolMbta replicated_db(benchConfig.getNthreads() + 1);
     abstract_db *db = replicated_db.getDBWrapper(benchConfig.getNthreads())->getDB () ;
     db->init() ;
 

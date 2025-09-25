@@ -138,10 +138,8 @@ main(int argc, char **argv)
   benchConfig.setIsMicro(is_micro);
   benchConfig.setIsReplicated(is_replicated);
   benchConfig.setPaxosConfigFile(paxos_config_file);
-  
-  // This variable is accessible until program ends as follower replays uses it
-  TSharedThreadPoolMbta replicated_db (benchConfig.getNthreads()+1);
-  init_env(replicated_db) ;
+
+  init_env();
 
   abstract_db * db = initWithDB(); // Some init is required for followers/learners
   // Run worker threads on the leader

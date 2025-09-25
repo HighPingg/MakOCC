@@ -96,6 +96,6 @@ void modeMonitor(abstract_db *db, int thread_nums, bench_runner *R) {
     mimic_thread.detach();  // thread detach
 }
 
-abstract_db *ThreadDBWrapperMbta::replay_thread_wrapper_db = new mbta_wrapper;
+abstract_db *ThreadDBWrapperMbta::replay_thread_wrapper_db = new mbta_wrapper; // include just once!
 
 #endif // SILO_STO_COMMON_2_H

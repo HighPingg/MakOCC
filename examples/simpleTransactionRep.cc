@@ -205,9 +205,7 @@ int main(int argc, char **argv) {
     benchConfig.setConfig(config);
     benchConfig.setPaxosConfigFile(paxos_config_file);
 
-    // This variable is accessible until program ends as follower replays uses it
-    TSharedThreadPoolMbta replicated_db (benchConfig.getNthreads()+1);
-    init_env(replicated_db) ;
+    init_env();
 
     printf("=== Mako Transaction Tests  ===\n");
     
