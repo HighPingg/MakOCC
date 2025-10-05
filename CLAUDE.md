@@ -100,8 +100,31 @@ The system supports multiple transport mechanisms:
 - Uses jemalloc for optimized memory allocation
 - Lock-free data structures in performance-critical paths
 - Custom memory pools for reduced allocation overhead
+- **RustyCpp Migration**: Incrementally migrating to Rust-style smart pointers for memory safety
 
 ## Development Notes
+
+### RustyCpp Smart Pointer Migration (In Progress)
+The RRR framework is being migrated to use RustyCpp smart pointers for enhanced memory safety.
+
+#### Successfully Migrated Components
+- ✅ Event system: Cell<EventStatus> for interior mutability
+- ✅ IntEvent: Cell<int> for value field
+- ✅ Custom Weak<Coroutine> wrapper replacing std::weak_ptr
+- ✅ Collections: std::list → Vec (aliased to std::vector)
+- ✅ PollMgr: Raw array → Vec<std::unique_ptr<PollThread>>
+
+#### Migration Guidelines
+1. **Make small incremental changes**: Change one field/function at a time
+2. **Test after each change**: Run `ctest` immediately after each modification
+3. **Use RustyCpp types exclusively for new code**:
+   - `rusty::Box<T>` for single ownership (instead of unique_ptr)
+   - `rusty::Arc<T>` for thread-safe sharing (instead of shared_ptr)
+   - `rusty::Rc<T>` for single-thread sharing
+   - `rusty::Cell<T>` for interior mutability of Copy types
+   - `rusty::RefCell<T>` for interior mutability of complex types
+4. **Never use C++ standard library smart pointers** in new code
+5. **Document safety annotations**: Add `// @safe` or `// @unsafe` comments
 
 ### Writing Safe C++ Code (Following RustyCpp Guidelines)
 When writing new C++ code or modifying existing code, follow these safety guidelines to ensure compatibility with RustyCpp borrow checking:
@@ -113,7 +136,10 @@ When writing new C++ code or modifying existing code, follow these safety guidel
 4. **Move Semantics**: Prefer `std::move` for transferring ownership, avoid use-after-move
 
 #### Best Practices for RustyCpp Compliance
-- **Smart Pointers**: Use `std::unique_ptr` for single ownership, `std::shared_ptr` for shared ownership
+- **Smart Pointers**: Use RustyCpp types exclusively:
+  - `rusty::Box<T>` for single ownership (NOT std::unique_ptr)
+  - `rusty::Arc<T>`/`rusty::Rc<T>` for shared ownership (NOT std::shared_ptr)
+  - Custom `Weak<T>` wrapper for weak references (NOT std::weak_ptr)
 - **RAII**: Always use RAII (Resource Acquisition Is Initialization) patterns
 - **Const Correctness**: Mark methods and parameters `const` when they don't modify state
 - **Avoid Global State**: Minimize global variables and static mutable state
@@ -132,6 +158,16 @@ The project uses RustyCpp for static analysis. To ensure your code passes borrow
 - Build with `ENABLE_BORROW_CHECKING=ON` during development
 - Run `make borrow_check_all_dbtest` to verify all files
 - Address any violations before committing
+
+#### Interior Mutability Patterns
+When you need to mutate data through shared references:
+- Use `Cell<T>` for Copy types (int, bool, etc.) - zero overhead
+- Use `RefCell<T>` for complex types - runtime borrow checking
+- Example:
+```cpp
+mutable CopyMut<int> counter_{0};  // Cell<int>
+counter_.set(counter_.get() + 1);  // Mutation through const method
+```
 
 ### Adding New Transaction Protocols
 New protocols should be added under `src/deptran/` following the existing pattern:

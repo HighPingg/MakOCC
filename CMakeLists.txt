@@ -594,6 +594,7 @@ target_include_directories(txlog PRIVATE
     src/memdb
     src/deptran
     src/bench
+    ${CMAKE_CURRENT_SOURCE_DIR}/third-party/rusty-cpp/include
     dependencies/yaml-cpp/include
     ${Boost_INCLUDE_DIRS}
     ${Python3_INCLUDE_DIRS}
@@ -759,6 +760,7 @@ if(NOT TARGET rrr)
     target_include_directories(rrr PUBLIC
         src
         src/rrr
+        ${CMAKE_CURRENT_SOURCE_DIR}/third-party/rusty-cpp/include
     )
     target_compile_options(rrr PUBLIC ${BENCH_CXXFLAGS})
     target_link_libraries(rrr pthread ${Boost_LIBRARIES})
