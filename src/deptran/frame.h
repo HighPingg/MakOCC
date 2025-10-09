@@ -48,7 +48,7 @@ class Frame {
 
   virtual Executor *CreateExecutor(cmdid_t cmd_id, TxLogServer *sch);
   virtual TxLogServer *CreateScheduler();
-  virtual Communicator *CreateCommo(PollMgr *pollmgr = nullptr);
+  virtual Communicator *CreateCommo(PollThread *pollmgr = nullptr);
   // for only dtxn
   Sharding *CreateSharding();
   Sharding *CreateSharding(Sharding *sd);
@@ -65,7 +65,7 @@ class Frame {
   Workload *CreateTxGenerator();
   virtual vector<rrr::Service *> CreateRpcServices(uint32_t site_id,
                                                    TxLogServer *dtxn_sched,
-                                                   rrr::PollMgr *poll_mgr,
+                                                   rrr::PollThread *poll_mgr,
                                                    ServerControlServiceImpl *scsi);
 };
 

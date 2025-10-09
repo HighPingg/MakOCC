@@ -184,7 +184,7 @@ int PaxosWorker::Next(int slot_id, shared_ptr<Marshallable> cmd) {
 void PaxosWorker::SetupService() {
   std::string bind_addr = site_info_->GetBindAddress();
   int n_io_threads = 1 ;
-  svr_poll_mgr_ = new rrr::PollMgr(n_io_threads);
+  svr_poll_mgr_ = new rrr::PollThread(n_io_threads);
   if (rep_frame_ != nullptr) {
     services_ = rep_frame_->CreateRpcServices(site_info_->id,
                                               rep_sched_,
@@ -235,7 +235,7 @@ void PaxosWorker::SetupHeartbeat() {
   auto timeout = Config::GetConfig()->get_ctrl_timeout();
   scsi_ = new ServerControlServiceImpl(timeout);
   int n_io_threads = 1;
-  svr_hb_poll_mgr_g = new rrr::PollMgr(n_io_threads);
+  svr_hb_poll_mgr_g = new rrr::PollThread(n_io_threads);
   hb_thread_pool_g = new rrr::ThreadPool(1);
   hb_rpc_server_ = new rrr::Server(svr_hb_poll_mgr_g, hb_thread_pool_g);
   hb_rpc_server_->reg(scsi_);
@@ -521,7 +521,7 @@ void* PaxosWorker::StartReadAccept(void* arg){
     auto sp_job = std::make_shared<OneTimeJob>([&pw, sub]() {
       pw->BulkSubmit(sub);
     });
-    pw->GetPollMgr()->add(sp_job);
+    pw->GetPollThread()->add(sp_job);
     sent += cnt;
     if(sent % 2 == 0)Log_info("Total submits %d", sent);
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -538,7 +538,7 @@ void PaxosWorker::AddAcceptNc(shared_ptr<Coordinator> coord) {
 }
 
 void PaxosWorker::submitJob(std::shared_ptr<Job> sp_job){
-	GetPollMgr()->add(sp_job);
+	GetPollThread()->add(sp_job);
 }
 
 void* PaxosWorker::StartReadAcceptNc(void* arg){

@@ -17,7 +17,7 @@
 namespace janus {
 
 ClassicServiceImpl::ClassicServiceImpl(TxLogServer* sched,
-                                       rrr::PollMgr* poll_mgr,
+                                       rrr::PollThread* poll_mgr,
                                        ServerControlServiceImpl* scsi) : scsi_(
     scsi), dtxn_sched_(sched) {
 

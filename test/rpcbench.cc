@@ -26,7 +26,7 @@ int worker_threads = 16;
 int rpc_bench_vector_size = 0;
 
 static string request_str;
-PollMgr* poll;
+PollThread* poll;
 ThreadPool* thrpool;
 
 Counter req_counter;
@@ -190,7 +190,7 @@ int main(int argc, char **argv) {
     Log_info("vector size:             %d", rpc_bench_vector_size);
 
     request_str = string(byte_size, 'x');
-    poll = new PollMgr(epoll_instances);
+    poll = new PollThread(epoll_instances);
     thrpool = new ThreadPool(worker_threads);
     if (is_server) {
         BenchmarkService svc;

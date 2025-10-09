@@ -110,7 +110,7 @@ class ClassicServiceImpl : public ClassicService {
   ClassicServiceImpl() = delete;
 
   ClassicServiceImpl(TxLogServer* sched,
-                     rrr::PollMgr* poll_mgr,
+                     rrr::PollThread* poll_mgr,
                      ServerControlServiceImpl* scsi = NULL);
 
   void RccDispatch(const vector<SimpleCommand>& cmd,

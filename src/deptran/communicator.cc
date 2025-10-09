@@ -10,11 +10,11 @@
 
 namespace janus {
 
-Communicator::Communicator(PollMgr* poll_mgr) {
+Communicator::Communicator(PollThread* poll_mgr) {
   Log_info("setup paxos communicator");
   vector<string> addrs;
   if (poll_mgr == nullptr)
-    rpc_poll_ = new PollMgr(1);
+    rpc_poll_ = new PollThread(1);
   else
     rpc_poll_ = poll_mgr;
   auto config = Config::GetConfig();

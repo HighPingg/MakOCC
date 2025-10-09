@@ -70,7 +70,7 @@ public:
 
 class ExtendedRPCTest : public ::testing::Test {
 protected:
-    PollMgr* poll_mgr;
+    PollThread* poll_mgr;
     Server* server;
     ExtendedTestService* service;
     static constexpr int test_port_base = 9000;
@@ -79,7 +79,7 @@ protected:
     
     void SetUp() override {
         current_port = test_port_base + port_offset++;
-        poll_mgr = new PollMgr;
+        poll_mgr = new PollThread;
         server = new Server(poll_mgr);
         service = new ExtendedTestService();
         server->reg(service);

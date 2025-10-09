@@ -93,14 +93,14 @@ private:
 
 class FutureTest : public ::testing::Test {
 protected:
-    PollMgr* poll_mgr;
+    PollThread* poll_mgr;
     Server* server;
     TestFutureService* service;
     std::shared_ptr<Client> client;
     static constexpr int test_port = 8849;  // Different port from RPC test
 
     void SetUp() override {
-        poll_mgr = new PollMgr;
+        poll_mgr = new PollThread;
         server = new Server(poll_mgr);
         service = new TestFutureService();
 

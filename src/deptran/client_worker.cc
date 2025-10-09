@@ -268,7 +268,7 @@ ClientWorker::ClientWorker(
     Config::SiteInfo& site_info,
     Config* config,
     ClientControlServiceImpl* ccsi,
-    PollMgr* poll_mgr) :
+    PollThread* poll_mgr) :
     id(id),
     my_site_(site_info),
     config_(config),
@@ -278,7 +278,7 @@ ClientWorker::ClientWorker(
     duration(config->get_duration()),
     ccsi(ccsi),
     n_concurrent_(config->get_concurrent_txn()) {
-  poll_mgr_ = poll_mgr == nullptr ? new PollMgr(1) : poll_mgr;
+  poll_mgr_ = poll_mgr == nullptr ? new PollThread(1) : poll_mgr;
   frame_ = Frame::GetFrame(config->tx_proto_);
   tx_generator_ = frame_->CreateTxGenerator();
   config->get_all_site_addr(servers_);

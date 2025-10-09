@@ -17,7 +17,7 @@ class TxReply;
 
 class ClientWorker {
  public:
-  PollMgr* poll_mgr_{nullptr};
+  PollThread* poll_mgr_{nullptr};
   Frame* frame_{nullptr};
   Communicator* commo_{nullptr};
   cliid_t cli_id_;
@@ -51,7 +51,7 @@ class ClientWorker {
                Config::SiteInfo &site_info,
                Config *config,
                ClientControlServiceImpl *ccsi,
-               PollMgr* mgr);
+               PollThread* mgr);
   ClientWorker() = delete;
   ~ClientWorker();
   // This is called from a different thread.

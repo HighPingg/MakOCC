@@ -9,11 +9,11 @@ using namespace rrr;
 using namespace std::chrono;
 
 int main() {
-    // Test basic PollMgr creation
-    PollMgr* poll_mgr = new PollMgr(1);  // Create with 1 thread
+    // Test basic PollThread creation
+    PollThread* poll_mgr = new PollThread(1);  // Create with 1 thread
     
     if (poll_mgr != nullptr) {
-        std::cout << "PollMgr created successfully" << std::endl;
+        std::cout << "PollThread created successfully" << std::endl;
         std::cout << "Number of threads: " << poll_mgr->n_threads_ << std::endl;
     }
     

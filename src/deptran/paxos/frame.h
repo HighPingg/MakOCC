@@ -22,10 +22,10 @@ class MultiPaxosFrame : public Frame {
                                  shared_ptr<TxnRegistry> txn_reg) override;
   Coordinator *CreateBulkCoordinator(Config *config, int benchmark);
   TxLogServer *CreateScheduler() override;
-  Communicator *CreateCommo(PollMgr *poll = nullptr) override;
+  Communicator *CreateCommo(PollThread *poll = nullptr) override;
   vector<rrr::Service *> CreateRpcServices(uint32_t site_id,
                                            TxLogServer *dtxn_sched,
-                                           rrr::PollMgr *poll_mgr,
+                                           rrr::PollThread *poll_mgr,
                                            ServerControlServiceImpl *scsi) override;
 };
 

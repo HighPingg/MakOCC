@@ -92,7 +92,7 @@ class Communicator {
  public:
   const int CONNECT_TIMEOUT_MS = 120*1000;
   const int CONNECT_SLEEP_MS = 1000;
-  rrr::PollMgr *rpc_poll_ = nullptr;
+  rrr::PollThread *rpc_poll_ = nullptr;
   locid_t loc_id_ = -1;
   map<siteid_t, std::shared_ptr<rrr::Client>> rpc_clients_{};
   map<siteid_t, ClassicProxy *> rpc_proxies_{};
@@ -102,7 +102,7 @@ class Communicator {
   std::atomic_bool client_leaders_connected_;
   std::vector<std::thread> threads;
 
-  Communicator(PollMgr* poll_mgr = nullptr);
+  Communicator(PollThread* poll_mgr = nullptr);
   virtual ~Communicator();
 
   SiteProxyPair RandomProxyForPartition(parid_t partition_id) const;

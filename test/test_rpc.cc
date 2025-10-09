@@ -60,14 +60,14 @@ public:
 
 class RPCTest : public ::testing::Test {
 protected:
-    PollMgr* poll_mgr;
+    PollThread* poll_mgr;
     Server* server;
     TestService* service;
     std::shared_ptr<Client> client;
     static constexpr int test_port = 8848;
 
     void SetUp() override {
-        poll_mgr = new PollMgr;
+        poll_mgr = new PollThread;
         server = new Server(poll_mgr);
         service = new TestService();
 
@@ -375,10 +375,10 @@ TEST_F(RPCTest, FastClientSlowServer) {
 
 class ConnectionErrorTest : public ::testing::Test {
 protected:
-    PollMgr* poll_mgr;
+    PollThread* poll_mgr;
     
     void SetUp() override {
-        poll_mgr = new PollMgr;
+        poll_mgr = new PollThread;
     }
     
     void TearDown() override {

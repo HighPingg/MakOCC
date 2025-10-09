@@ -37,7 +37,7 @@ TxLogServer *FrameFebruus::CreateScheduler() {
 //vector<rrr::Service *>
 //JanusFrame::CreateRpcServices(uint32_t site_id,
 //                            Scheduler *sched,
-//                            rrr::PollMgr *poll_mgr,
+//                            rrr::PollThread *poll_mgr,
 //                            ServerControlServiceImpl* scsi) {
 //  return Frame::CreateRpcServices(site_id, sched, poll_mgr, scsi);
 //}
@@ -54,7 +54,7 @@ shared_ptr<Tx> FrameFebruus::CreateTx(epoch_t epoch, txnid_t tid,
   return sp_tx;
 }
 
-//Communicator* JanusFrame::CreateCommo(PollMgr* poll) {
+//Communicator* JanusFrame::CreateCommo(PollThread* poll) {
 //  return new JanusCommo(poll);
 //}
 

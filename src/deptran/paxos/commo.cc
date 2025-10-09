@@ -9,7 +9,7 @@
 
 namespace janus {
 
-MultiPaxosCommo::MultiPaxosCommo(PollMgr* poll) : Communicator(poll) {
+MultiPaxosCommo::MultiPaxosCommo(PollThread* poll) : Communicator(poll) {
 }
 
 void MultiPaxosCommo::BroadcastPrepare(parid_t par_id,

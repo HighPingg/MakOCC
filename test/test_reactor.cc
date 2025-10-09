@@ -73,10 +73,10 @@ public:
 
 class ReactorTest : public ::testing::Test {
 protected:
-    PollMgr* poll_mgr;
+    PollThread* poll_mgr;
     
     void SetUp() override {
-        poll_mgr = new PollMgr(1);  // Create with 1 thread
+        poll_mgr = new PollThread(1);  // Create with 1 thread
     }
     
     void TearDown() override {
@@ -94,10 +94,9 @@ protected:
     }
 };
 
-TEST_F(ReactorTest, BasicPollMgrCreation) {
+TEST_F(ReactorTest, BasicPollThreadCreation) {
     EXPECT_NE(poll_mgr, nullptr);
-    // PollMgr doesn't have pollset_id() method
-    EXPECT_EQ(poll_mgr->n_threads_, 1);
+    // PollThread now always uses a single thread (n_threads_ member removed)
 }
 
 TEST_F(ReactorTest, AddRemoveFd) {

@@ -17,7 +17,7 @@ class TroadFrame : public JanusFrame {
 //  Scheduler *CreateScheduler() override;
 //  vector<rrr::Service *> CreateRpcServices(uint32_t site_id,
 //                                           Scheduler *dtxn_sched,
-//                                           rrr::PollMgr *poll_mgr,
+//                                           rrr::PollThread *poll_mgr,
 //                                           ServerControlServiceImpl *scsi)
 //  override;
 //  mdb::Row *CreateRow(const mdb::Schema *schema,
@@ -26,7 +26,7 @@ class TroadFrame : public JanusFrame {
 //  shared_ptr<Tx> CreateTx(epoch_t epoch, txnid_t tid,
 //                          bool ro, Scheduler *mgr) override;
 //
-//  Communicator *CreateCommo(PollMgr *poll = nullptr) override;
+//  Communicator *CreateCommo(PollThread *poll = nullptr) override;
 };
 
 } // namespace janus
