@@ -102,117 +102,137 @@ public:
     virtual void nop(const std::string&);
     virtual void sleep(const double& sec);
 private:
-    void __fast_prime__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __fast_prime__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         rrr::i32 in_0;
         req->m >> in_0;
         rrr::i8 out_0;
         this->fast_prime(in_0, &out_0);
-        sconn->begin_reply(req);
-        *sconn << out_0;
-        sconn->end_reply();
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
+            *sconn << out_0;
+            sconn->end_reply();
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
-    void __fast_dot_prod__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __fast_dot_prod__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         point3 in_0;
         req->m >> in_0;
         point3 in_1;
         req->m >> in_1;
         double out_0;
         this->fast_dot_prod(in_0, in_1, &out_0);
-        sconn->begin_reply(req);
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
         *sconn << out_0;
         sconn->end_reply();
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
-    void __fast_add__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __fast_add__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         rrr::v32 in_0;
         req->m >> in_0;
         rrr::v32 in_1;
         req->m >> in_1;
         rrr::v32 out_0;
         this->fast_add(in_0, in_1, &out_0);
-        sconn->begin_reply(req);
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
         *sconn << out_0;
         sconn->end_reply();
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
-    void __fast_nop__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __fast_nop__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::string in_0;
         req->m >> in_0;
         this->fast_nop(in_0);
-        sconn->begin_reply(req);
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
         sconn->end_reply();
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
-    void __fast_vec__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __fast_vec__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         rrr::i32 in_0;
         req->m >> in_0;
         std::vector<rrr::i64> out_0;
         this->fast_vec(in_0, &out_0);
-        sconn->begin_reply(req);
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
         *sconn << out_0;
         sconn->end_reply();
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
-    void __prime__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __prime__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         rrr::i32 in_0;
         req->m >> in_0;
         rrr::i8 out_0;
         this->prime(in_0, &out_0);
-        sconn->begin_reply(req);
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
         *sconn << out_0;
         sconn->end_reply();
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
-    void __dot_prod__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __dot_prod__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         point3 in_0;
         req->m >> in_0;
         point3 in_1;
         req->m >> in_1;
         double out_0;
         this->dot_prod(in_0, in_1, &out_0);
-        sconn->begin_reply(req);
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
         *sconn << out_0;
         sconn->end_reply();
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
-    void __add__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __add__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         rrr::v32 in_0;
         req->m >> in_0;
         rrr::v32 in_1;
         req->m >> in_1;
         rrr::v32 out_0;
         this->add(in_0, in_1, &out_0);
-        sconn->begin_reply(req);
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
         *sconn << out_0;
         sconn->end_reply();
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
-    void __nop__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __nop__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::string in_0;
         req->m >> in_0;
         this->nop(in_0);
-        sconn->begin_reply(req);
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
         sconn->end_reply();
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
-    void __sleep__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __sleep__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         double in_0;
         req->m >> in_0;
         this->sleep(in_0);
-        sconn->begin_reply(req);
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
         sconn->end_reply();
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
 };
 

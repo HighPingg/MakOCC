@@ -107,7 +107,7 @@ TEST_F(ReactorTest, AddRemoveFd) {
 
     poll_mgr->add(p);
 
-    poll_mgr->remove(p);
+    poll_mgr->remove(*p);
 
     close(fd1);
     close(fd2);
@@ -137,7 +137,7 @@ TEST_F(ReactorTest, PollReadEvent) {
 
     EXPECT_TRUE(read_triggered);
 
-    poll_mgr->remove(p);
+    poll_mgr->remove(*p);
     close(fd1);
     close(fd2);
 }
@@ -159,7 +159,7 @@ TEST_F(ReactorTest, PollWriteEvent) {
 
     EXPECT_TRUE(write_triggered);
 
-    poll_mgr->remove(p);
+    poll_mgr->remove(*p);
     close(fd1);
     close(fd2);
 }
@@ -195,8 +195,8 @@ TEST_F(ReactorTest, MultipleEvents) {
 
     EXPECT_EQ(events_triggered, 2);
 
-    poll_mgr->remove(p1);
-    poll_mgr->remove(p2);
+    poll_mgr->remove(*p1);
+    poll_mgr->remove(*p2);
 
     close(fd1);
     close(fd2);
@@ -230,12 +230,12 @@ TEST_F(ReactorTest, UpdateMode) {
 
     // Change to WRITE mode
     p->set_mode(Pollable::WRITE);
-    poll_mgr->update_mode(p, Pollable::WRITE);
+    poll_mgr->update_mode(*p, Pollable::WRITE);
 
     std::this_thread::sleep_for(milliseconds(100));
     EXPECT_TRUE(write_triggered);
 
-    poll_mgr->remove(p);
+    poll_mgr->remove(*p);
     close(fd1);
     close(fd2);
 }
@@ -260,7 +260,7 @@ TEST_F(ReactorTest, ErrorHandling) {
     // Error handling depends on epoll/kqueue behavior
     // This test may not reliably trigger error on all systems
 
-    poll_mgr->remove(p);
+    poll_mgr->remove(*p);
     close(fd1);
 }
 
@@ -393,7 +393,7 @@ TEST_F(ReactorTest, StressTest) {
 
     // Cleanup
     for (auto p : pollables) {
-        poll_mgr->remove(p);
+        poll_mgr->remove(*p);
     }
 
     for (auto& [fd1, fd2] : socket_pairs) {

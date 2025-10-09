@@ -62,7 +62,7 @@ public:
     virtual void txn_order_status(const std::vector<int32_t>& _req, rrr::DeferredReply* defer) = 0;
     virtual void txn_stock_level(const std::vector<int32_t>& _req, rrr::DeferredReply* defer) = 0;
 private:
-    void __txn_rmw__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __txn_rmw__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::vector<rrr::i64>* in_0 = new std::vector<rrr::i64>;
         req->m >> *in_0;
         auto __marshal_reply__ = [=] {
@@ -70,10 +70,10 @@ private:
         auto __cleanup__ = [=] {
             delete in_0;
         };
-        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, sconn, __marshal_reply__, __cleanup__);
+        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, weak_sconn, __marshal_reply__, __cleanup__);
         this->txn_rmw(*in_0, __defer__);
     }
-    void __txn_read__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __txn_read__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::vector<rrr::i64>* in_0 = new std::vector<rrr::i64>;
         req->m >> *in_0;
         auto __marshal_reply__ = [=] {
@@ -81,10 +81,10 @@ private:
         auto __cleanup__ = [=] {
             delete in_0;
         };
-        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, sconn, __marshal_reply__, __cleanup__);
+        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, weak_sconn, __marshal_reply__, __cleanup__);
         this->txn_read(*in_0, __defer__);
     }
-    void __txn_new_order__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __txn_new_order__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::vector<int32_t>* in_0 = new std::vector<int32_t>;
         req->m >> *in_0;
         auto __marshal_reply__ = [=] {
@@ -92,10 +92,10 @@ private:
         auto __cleanup__ = [=] {
             delete in_0;
         };
-        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, sconn, __marshal_reply__, __cleanup__);
+        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, weak_sconn, __marshal_reply__, __cleanup__);
         this->txn_new_order(*in_0, __defer__);
     }
-    void __txn_payment__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __txn_payment__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::vector<int32_t>* in_0 = new std::vector<int32_t>;
         req->m >> *in_0;
         auto __marshal_reply__ = [=] {
@@ -103,10 +103,10 @@ private:
         auto __cleanup__ = [=] {
             delete in_0;
         };
-        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, sconn, __marshal_reply__, __cleanup__);
+        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, weak_sconn, __marshal_reply__, __cleanup__);
         this->txn_payment(*in_0, __defer__);
     }
-    void __txn_delivery__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __txn_delivery__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::vector<int32_t>* in_0 = new std::vector<int32_t>;
         req->m >> *in_0;
         auto __marshal_reply__ = [=] {
@@ -114,10 +114,10 @@ private:
         auto __cleanup__ = [=] {
             delete in_0;
         };
-        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, sconn, __marshal_reply__, __cleanup__);
+        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, weak_sconn, __marshal_reply__, __cleanup__);
         this->txn_delivery(*in_0, __defer__);
     }
-    void __txn_order_status__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __txn_order_status__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::vector<int32_t>* in_0 = new std::vector<int32_t>;
         req->m >> *in_0;
         auto __marshal_reply__ = [=] {
@@ -125,10 +125,10 @@ private:
         auto __cleanup__ = [=] {
             delete in_0;
         };
-        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, sconn, __marshal_reply__, __cleanup__);
+        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, weak_sconn, __marshal_reply__, __cleanup__);
         this->txn_order_status(*in_0, __defer__);
     }
-    void __txn_stock_level__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __txn_stock_level__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::vector<int32_t>* in_0 = new std::vector<int32_t>;
         req->m >> *in_0;
         auto __marshal_reply__ = [=] {
@@ -136,7 +136,7 @@ private:
         auto __cleanup__ = [=] {
             delete in_0;
         };
-        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, sconn, __marshal_reply__, __cleanup__);
+        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, weak_sconn, __marshal_reply__, __cleanup__);
         this->txn_stock_level(*in_0, __defer__);
     }
 };

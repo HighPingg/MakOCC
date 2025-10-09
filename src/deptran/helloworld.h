@@ -26,18 +26,21 @@ public:
     // for 'raw' handlers, remember to reply req, delete req; shared_ptr handles connection lifetime
     virtual void txn_read(const std::vector<rrr::i64>& _req, rrr::i32* val, rrr::DeferredReply* defer) = 0;
 private:
-    void __txn_read__wrapper__(rrr::Request* req, std::shared_ptr<rrr::ServerConnection> sconn) {
+    void __txn_read__wrapper__(rrr::Request* req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::vector<rrr::i64>* in_0 = new std::vector<rrr::i64>;
         req->m >> *in_0;
         rrr::i32* out_0 = new rrr::i32;
         auto __marshal_reply__ = [=] {
-            *sconn << *out_0;
+            auto sconn = weak_sconn.lock();
+            if (sconn) {
+                *sconn << *out_0;
+            }
         };
         auto __cleanup__ = [=] {
             delete in_0;
             delete out_0;
         };
-        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, sconn, __marshal_reply__, __cleanup__);
+        rrr::DeferredReply* __defer__ = new rrr::DeferredReply(req, weak_sconn, __marshal_reply__, __cleanup__);
         this->txn_read(*in_0, out_0, __defer__);
     }
 };

@@ -35,20 +35,21 @@ public:
     }
     
 private:
-    void fast_echo_wrapper(Request* req, std::shared_ptr<ServerConnection> sconn) {
+    void fast_echo_wrapper(Request* req, std::weak_ptr<ServerConnection> weak_sconn) {
         call_count++;
         std::string input;
         req->m >> input;
 
-        sconn->begin_reply(req);
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
         *sconn << input;
         sconn->end_reply();
-
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
 
-    void slow_echo_wrapper(Request* req, std::shared_ptr<ServerConnection> sconn) {
+    void slow_echo_wrapper(Request* req, std::weak_ptr<ServerConnection> weak_sconn) {
         call_count++;
         std::string input;
         req->m >> input;
@@ -57,30 +58,32 @@ private:
             std::this_thread::sleep_for(milliseconds(delay_ms));
         }
 
-        sconn->begin_reply(req);
-        *sconn << input;
-        sconn->end_reply();
-
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
+            *sconn << input;
+            sconn->end_reply();
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
 
-    void get_value_wrapper(Request* req, std::shared_ptr<ServerConnection> sconn) {
+    void get_value_wrapper(Request* req, std::weak_ptr<ServerConnection> weak_sconn) {
         call_count++;
         i32 input;
         req->m >> input;
 
         i32 result = input * 2;
 
-        sconn->begin_reply(req);
+        auto sconn = weak_sconn.lock();
+        if (sconn) {
+            sconn->begin_reply(req);
         *sconn << result;
         sconn->end_reply();
-
+        }
         delete req;
-        // sconn automatically released by shared_ptr
     }
 
-    void error_method_wrapper(Request* req, std::shared_ptr<ServerConnection> sconn) {
+    void error_method_wrapper(Request* req, std::weak_ptr<ServerConnection> weak_sconn) {
         call_count++;
         // Don't reply - simulate an error
         delete req;
