@@ -58,6 +58,9 @@ make -j32
 
 # 2 shards with replication on simple transaction
 ./ci/ci.sh shard2ReplicationSimple
+
+# RocksDB persistence and partitioned queues tests
+./ci/ci.sh rocksdbTests
 ```
 
 ## Code Architecture

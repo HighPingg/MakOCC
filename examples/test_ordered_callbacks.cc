@@ -1,3 +1,35 @@
+/**
+ * test_ordered_callbacks.cc
+ *
+ * DESCRIPTION:
+ * Tests ordered callback execution guarantees for RocksDB persistence layer.
+ *
+ * TESTS INCLUDED:
+ * 1. Ordered Callbacks - 100 logs submitted in random order, callbacks must execute in submission order
+ * 2. Unordered Callbacks - 50 logs without ordering requirement (for comparison)
+ * 3. Multiple Partitions - 3 partitions with independent ordering (20 logs each)
+ *
+ * PURPOSE:
+ * Validates that the persistence layer maintains Paxos-like ordering guarantees:
+ * - Callbacks execute in the order messages were submitted to each partition
+ * - Each partition maintains independent ordering (no cross-partition blocking)
+ * - Ordering is preserved even when messages arrive out-of-order
+ * - Supports both ordered and unordered operations on same partition
+ *
+ * KEY FEATURES TESTED:
+ * - Submission order tracking and verification
+ * - Ordered callback execution per partition
+ * - Independence between partitions
+ * - Mixed ordered/unordered operations
+ * - Sequence number management
+ *
+ * EXPECTED RESULTS:
+ * - Ordered test: All 100 callbacks execute in submission order
+ * - Unordered test: All 50 callbacks execute (order not guaranteed)
+ * - Multiple partitions: All 3 partitions process independently and correctly (20/20 each)
+ * - No callback order violations within a partition
+ */
+
 #include "../src/mako/rocksdb_persistence.h"
 #include <iostream>
 #include <thread>
@@ -21,7 +53,7 @@ void test_ordered_callbacks() {
 
     const int NUM_LOGS = 100;
     const uint32_t SHARD_ID = 1;
-    const uint32_t PARTITION_ID = 5;
+    const uint32_t PARTITION_ID = 0;  // Valid partition ID (0-3)
 
     callback_order = 0;
     callback_sequence.clear();
@@ -124,7 +156,7 @@ void test_unordered_callbacks() {
 
     const int NUM_LOGS = 50;
     const uint32_t SHARD_ID = 2;
-    const uint32_t PARTITION_ID = 10;
+    const uint32_t PARTITION_ID = 1;  // Valid partition ID (0-3)
 
     std::atomic<int> completed_count{0};
     std::vector<std::future<bool>> futures;
@@ -228,7 +260,7 @@ int main() {
 
     // Initialize with temp directory
     std::string db_path = "/tmp/rocksdb_ordered_test_" + std::to_string(getpid());
-    if (!persistence.initialize(db_path, 4)) {
+    if (!persistence.initialize(db_path, 4, 4)) {
         std::cerr << "Failed to initialize RocksDB persistence" << std::endl;
         return 1;
     }

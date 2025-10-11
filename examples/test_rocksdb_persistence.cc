@@ -1,3 +1,30 @@
+/**
+ * test_rocksdb_persistence.cc
+ *
+ * DESCRIPTION:
+ * Basic test suite for RocksDB persistence layer functionality.
+ *
+ * TESTS INCLUDED:
+ * 1. Basic Persistence - Single write with callback verification
+ * 2. Concurrent Writes - 4 threads writing 100 messages each to test thread safety
+ * 3. Large Data - 1MB write to test large message handling
+ * 4. Key Generation - Verifies RocksDB key format (shard:partition:epoch:sequence)
+ *
+ * PURPOSE:
+ * Validates core RocksDB persistence operations including:
+ * - Asynchronous write operations
+ * - Callback execution
+ * - Thread-safe concurrent access
+ * - Large message handling
+ * - Key format correctness
+ *
+ * EXPECTED RESULTS:
+ * - All writes should succeed
+ * - Callbacks should execute correctly
+ * - Throughput: 10,000+ writes/sec for small messages
+ * - Large writes (1MB) should complete in <10ms
+ */
+
 #include <iostream>
 #include <thread>
 #include <chrono>
@@ -21,8 +48,8 @@ void test_basic_persistence() {
 
     auto& persistence = RocksDBPersistence::getInstance();
 
-    // Initialize RocksDB
-    if (!persistence.initialize("/tmp/test_rocksdb", 2)) {
+    // Initialize RocksDB with 2 partitions
+    if (!persistence.initialize("/tmp/test_rocksdb", 2, 2)) {
         cerr << "Failed to initialize RocksDB!" << endl;
         return;
     }
@@ -53,7 +80,7 @@ void test_concurrent_writes() {
 
     auto& persistence = RocksDBPersistence::getInstance();
 
-    if (!persistence.initialize("/tmp/test_rocksdb_concurrent", 4)) {
+    if (!persistence.initialize("/tmp/test_rocksdb_concurrent", 4, 4)) {
         cerr << "Failed to initialize RocksDB!" << endl;
         return;
     }
@@ -124,7 +151,7 @@ void test_large_data() {
 
     auto& persistence = RocksDBPersistence::getInstance();
 
-    if (!persistence.initialize("/tmp/test_rocksdb_large", 4)) {
+    if (!persistence.initialize("/tmp/test_rocksdb_large", 4, 4)) {
         cerr << "Failed to initialize RocksDB!" << endl;
         return;
     }

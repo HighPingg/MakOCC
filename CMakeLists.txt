@@ -715,6 +715,8 @@ add_apps(simplePaxos examples/simplePaxos.cc)
 add_apps(test_rocksdb_persistence examples/test_rocksdb_persistence.cc)
 add_apps(test_callback_demo examples/test_callback_demo.cc)
 add_apps(test_ordered_callbacks examples/test_ordered_callbacks.cc)
+add_apps(test_partitioned_queues examples/test_partitioned_queues.cc)
+add_apps(test_stress_partitioned_queues examples/test_stress_partitioned_queues.cc)
 
 # Enable borrow checking for dbtest
 set(ENABLE_BORROW_CHECKING ON CACHE BOOL "Enable borrow checking" FORCE)

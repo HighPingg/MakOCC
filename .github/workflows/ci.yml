@@ -54,6 +54,9 @@ jobs:
       - name: Run tests - simple 2 shard with replication - simpleTransactionRep
         run: ./ci/ci.sh shard2ReplicationSimple
 
+      - name: Run tests - RocksDB persistence and partitioned queues
+        run: ./ci/ci.sh rocksdbTests
+
       - name: Cleanup
         if: always()
         run: ./ci/clean.sh

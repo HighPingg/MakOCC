@@ -1,3 +1,33 @@
+/**
+ * test_callback_demo.cc
+ *
+ * DESCRIPTION:
+ * Demonstrates callback functionality for asynchronous RocksDB persistence operations.
+ *
+ * TESTS INCLUDED:
+ * 1. Basic Callbacks - 10 async writes with success/failure callback tracking
+ * 2. Transaction Simulation - Simulates Transaction.hh usage pattern with atomic counters
+ *
+ * PURPOSE:
+ * Shows how callbacks can be used to:
+ * - Track successful vs. failed persistence operations
+ * - Update shared atomic counters from worker threads
+ * - Monitor progress in production code
+ * - Integrate with existing transaction logging
+ *
+ * KEY FEATURES DEMONSTRATED:
+ * - Callback execution in worker thread context
+ * - Atomic counter updates (safe for concurrent access)
+ * - Success/failure reporting
+ * - Integration pattern for Transaction.hh
+ *
+ * EXPECTED RESULTS:
+ * - All 10 basic writes should succeed (10/10)
+ * - All 5 transaction logs should succeed (5/5)
+ * - No failures reported
+ * - Callbacks execute promptly after persistence
+ */
+
 #include <iostream>
 #include <atomic>
 #include <thread>
@@ -19,7 +49,7 @@ int main() {
 
     // Initialize RocksDB
     auto& persistence = mako::RocksDBPersistence::getInstance();
-    if (!persistence.initialize("/tmp/callback_demo_db", 2)) {
+    if (!persistence.initialize("/tmp/callback_demo_db", 2, 2)) {
         std::cerr << "Failed to initialize RocksDB!" << std::endl;
         return 1;
     }
@@ -76,7 +106,7 @@ int main() {
         std::string txn_log = "Transaction log entry " + std::to_string(txn);
 
         persistence.persistAsync(
-            txn_log.c_str(), txn_log.size(), 0, txn % 3,  // Vary partition_id
+            txn_log.c_str(), txn_log.size(), 0, txn % 2,  // Vary partition_id (0 or 1)
             [](bool success) {
                 if (success) {
                     uint64_t count = transaction_persist_count.fetch_add(1) + 1;

@@ -14,7 +14,7 @@ class RocksDBPersistence {
 public:
     static RocksDBPersistence& getInstance();
 
-    bool initialize(const std::string& db_path, size_t num_threads = 4);
+    bool initialize(const std::string& db_path, size_t num_partitions, size_t num_threads = 4);
     void shutdown();
 
     std::future<bool> persistAsync(const char* data, size_t size,

@@ -45,7 +45,17 @@ class RocksDBPersistence {
 public:
     static RocksDBPersistence& getInstance();
 
-    bool initialize(const std::string& db_path, size_t num_threads = 8);
+    /**
+     * Initialize RocksDB persistence with partitioned queues
+     *
+     * @param db_path Path to RocksDB database directory
+     * @param num_partitions Number of data partitions (typically one per application worker thread)
+     * @param num_threads Number of background I/O worker threads for RocksDB
+     *
+     * Note: num_threads can be less than num_partitions. Each background thread handles
+     * multiple partitions in round-robin fashion. Recommended: num_threads = max(1, num_partitions/2)
+     */
+    bool initialize(const std::string& db_path, size_t num_partitions, size_t num_threads = 8);
     void shutdown();
 
     std::future<bool> persistAsync(const char* data, size_t size,
@@ -75,7 +85,7 @@ private:
     RocksDBPersistence(const RocksDBPersistence&) = delete;
     RocksDBPersistence& operator=(const RocksDBPersistence&) = delete;
 
-    void workerThread();
+    void workerThread(size_t worker_id, size_t total_workers);
     uint64_t getNextSequenceNumber(uint32_t partition_id);
     void processOrderedCallbacks(uint32_t partition_id);
     void handlePersistComplete(uint32_t partition_id, uint64_t sequence_number,
@@ -85,9 +95,15 @@ private:
     rocksdb::Options options_;
     rocksdb::WriteOptions write_options_;
 
-    std::queue<std::unique_ptr<PersistRequest>> request_queue_;
-    std::mutex queue_mutex_;
-    std::condition_variable queue_cv_;
+    // Per-partition request queues to reduce contention
+    struct PartitionQueue {
+        std::queue<std::unique_ptr<PersistRequest>> queue;
+        std::mutex mutex;
+        std::condition_variable cv;
+        std::atomic<size_t> pending_writes{0};
+    };
+    std::vector<std::unique_ptr<PartitionQueue>> partition_queues_;
+    size_t num_partitions_{0};
 
     std::vector<std::thread> worker_threads_;
     std::atomic<bool> shutdown_flag_{false};
