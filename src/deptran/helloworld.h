@@ -10,7 +10,7 @@ namespace helloworld_client {
 class HelloworldClientService: public rrr::Service {
 public:
     enum {
-        TXN_READ = 0x17ed76c0,
+        TXN_READ = 0x49077f6b,
     };
     int __reg_to__(rrr::Server* svr) {
         int ret = 0;
@@ -23,10 +23,10 @@ public:
         return ret;
     }
     // these RPC handler functions need to be implemented by user
-    // for 'raw' handlers, req is unique_ptr (auto-cleaned); weak_ptr requires lock() before use
+    // for 'raw' handlers, req is rusty::Box (auto-cleaned); weak_ptr requires lock() before use
     virtual void txn_read(const std::vector<rrr::i64>& _req, rrr::i32* val, rrr::DeferredReply* defer) = 0;
 private:
-    void __txn_read__wrapper__(std::unique_ptr<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
+    void __txn_read__wrapper__(rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::vector<rrr::i64>* in_0 = new std::vector<rrr::i64>;
         req->m >> *in_0;
         rrr::i32* out_0 = new rrr::i32;

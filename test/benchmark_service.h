@@ -32,16 +32,16 @@ inline rrr::Marshal& operator >>(rrr::Marshal& m, point3& o) {
 class BenchmarkService: public rrr::Service {
 public:
     enum {
-        FAST_PRIME = 0x15f211f1,
-        FAST_DOT_PROD = 0x62865ea1,
-        FAST_ADD = 0x40751d30,
-        FAST_NOP = 0x60a8d30a,
-        FAST_VEC = 0x4ca9f2fe,
-        PRIME = 0x2b4518b8,
-        DOT_PROD = 0x675fed7d,
-        ADD = 0x1f622d44,
-        NOP = 0x23ca84e5,
-        SLEEP = 0x27c3880a,
+        FAST_PRIME = 0x679271a0,
+        FAST_DOT_PROD = 0x3b4c4925,
+        FAST_ADD = 0x2f021e20,
+        FAST_NOP = 0x4f4766c2,
+        FAST_VEC = 0x308c757d,
+        PRIME = 0x4897f15c,
+        DOT_PROD = 0x445ecc3c,
+        ADD = 0x44176f78,
+        NOP = 0x39279482,
+        SLEEP = 0x6c79fbb6,
     };
     int __reg_to__(rrr::Server* svr) {
         int ret = 0;
@@ -90,7 +90,7 @@ public:
         return ret;
     }
     // these RPC handler functions need to be implemented by user
-    // for 'raw' handlers, req is unique_ptr (auto-cleaned); weak_ptr requires lock() before use
+    // for 'raw' handlers, req is rusty::Box (auto-cleaned); weak_ptr requires lock() before use
     virtual void fast_prime(const rrr::i32& n, rrr::i8* flag);
     virtual void fast_dot_prod(const point3& p1, const point3& p2, double* v);
     virtual void fast_add(const rrr::v32& a, const rrr::v32& b, rrr::v32* a_add_b);
@@ -102,7 +102,7 @@ public:
     virtual void nop(const std::string&);
     virtual void sleep(const double& sec);
 private:
-    void __fast_prime__wrapper__(std::unique_ptr<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
+    void __fast_prime__wrapper__(rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         rrr::i32 in_0;
         req->m >> in_0;
         rrr::i8 out_0;
@@ -113,9 +113,9 @@ private:
             *sconn << out_0;
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
-    void __fast_dot_prod__wrapper__(std::unique_ptr<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
+    void __fast_dot_prod__wrapper__(rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         point3 in_0;
         req->m >> in_0;
         point3 in_1;
@@ -128,9 +128,9 @@ private:
             *sconn << out_0;
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
-    void __fast_add__wrapper__(std::unique_ptr<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
+    void __fast_add__wrapper__(rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         rrr::v32 in_0;
         req->m >> in_0;
         rrr::v32 in_1;
@@ -143,9 +143,9 @@ private:
             *sconn << out_0;
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
-    void __fast_nop__wrapper__(std::unique_ptr<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
+    void __fast_nop__wrapper__(rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::string in_0;
         req->m >> in_0;
         this->fast_nop(in_0);
@@ -154,9 +154,9 @@ private:
             sconn->begin_reply(*req);
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
-    void __fast_vec__wrapper__(std::unique_ptr<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
+    void __fast_vec__wrapper__(rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         rrr::i32 in_0;
         req->m >> in_0;
         std::vector<rrr::i64> out_0;
@@ -167,9 +167,9 @@ private:
             *sconn << out_0;
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
-    void __prime__wrapper__(std::unique_ptr<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
+    void __prime__wrapper__(rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         rrr::i32 in_0;
         req->m >> in_0;
         rrr::i8 out_0;
@@ -180,9 +180,9 @@ private:
             *sconn << out_0;
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
-    void __dot_prod__wrapper__(std::unique_ptr<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
+    void __dot_prod__wrapper__(rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         point3 in_0;
         req->m >> in_0;
         point3 in_1;
@@ -195,9 +195,9 @@ private:
             *sconn << out_0;
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
-    void __add__wrapper__(std::unique_ptr<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
+    void __add__wrapper__(rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         rrr::v32 in_0;
         req->m >> in_0;
         rrr::v32 in_1;
@@ -210,9 +210,9 @@ private:
             *sconn << out_0;
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
-    void __nop__wrapper__(std::unique_ptr<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
+    void __nop__wrapper__(rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         std::string in_0;
         req->m >> in_0;
         this->nop(in_0);
@@ -221,9 +221,9 @@ private:
             sconn->begin_reply(*req);
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
-    void __sleep__wrapper__(std::unique_ptr<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
+    void __sleep__wrapper__(rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn) {
         double in_0;
         req->m >> in_0;
         this->sleep(in_0);
@@ -232,7 +232,7 @@ private:
             sconn->begin_reply(*req);
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
 };
 

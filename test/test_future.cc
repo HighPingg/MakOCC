@@ -38,7 +38,7 @@ public:
     }
     
 private:
-    void fast_echo_wrapper(std::unique_ptr<Request> req, std::weak_ptr<ServerConnection> weak_sconn) {
+    void fast_echo_wrapper(rusty::Box<Request> req, std::weak_ptr<ServerConnection> weak_sconn) {
         call_count++;
         std::string input;
         req->m >> input;
@@ -49,10 +49,10 @@ private:
             *sconn << input;
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
 
-    void slow_echo_wrapper(std::unique_ptr<Request> req, std::weak_ptr<ServerConnection> weak_sconn) {
+    void slow_echo_wrapper(rusty::Box<Request> req, std::weak_ptr<ServerConnection> weak_sconn) {
         call_count++;
         std::string input;
         req->m >> input;
@@ -67,10 +67,10 @@ private:
             *sconn << input;
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
 
-    void get_value_wrapper(std::unique_ptr<Request> req, std::weak_ptr<ServerConnection> weak_sconn) {
+    void get_value_wrapper(rusty::Box<Request> req, std::weak_ptr<ServerConnection> weak_sconn) {
         call_count++;
         i32 input;
         req->m >> input;
@@ -83,13 +83,13 @@ private:
             *sconn << result;
             sconn->end_reply();
         }
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
     }
 
-    void error_method_wrapper(std::unique_ptr<Request> req, std::weak_ptr<ServerConnection> weak_sconn) {
+    void error_method_wrapper(rusty::Box<Request> req, std::weak_ptr<ServerConnection> weak_sconn) {
         call_count++;
         // Don't reply - simulate an error
-        // req automatically cleaned up by unique_ptr
+        // req automatically cleaned up by rusty::Box
         // sconn automatically released by shared_ptr
     }
 };
