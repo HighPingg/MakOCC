@@ -89,6 +89,11 @@ public:
     // Write metadata (epoch, num_partitions, num_shards, etc.) to partition 0
     bool writeMetadata(uint32_t shard_id, uint32_t num_shards);
 
+    // Read and parse metadata from partition 0
+    static bool parseMetadata(const std::string& db_path, uint32_t& epoch, uint32_t& shard_id,
+                              uint32_t& num_shards, size_t& num_partitions, size_t& num_workers,
+                              int64_t& timestamp);
+
 private:
     RocksDBPersistence();
     ~RocksDBPersistence();

@@ -560,4 +560,59 @@ void RocksDBPersistence::processOrderedCallbacks(uint32_t partition_id) {
     }
 }
 
+bool RocksDBPersistence::parseMetadata(const std::string& db_path, uint32_t& epoch, uint32_t& shard_id,
+                                       uint32_t& num_shards, size_t& num_partitions, size_t& num_workers,
+                                       int64_t& timestamp) {
+    // Open partition 0 database
+    std::string partition0_path = db_path + "_partition0";
+    rocksdb::Options options;
+    options.create_if_missing = false;
+    rocksdb::DB* meta_db;
+    rocksdb::Status status = rocksdb::DB::Open(options, partition0_path, &meta_db);
+
+    if (!status.ok()) {
+        fprintf(stderr, "Failed to open partition 0 for metadata: %s\n", status.ToString().c_str());
+        return false;
+    }
+
+    // Read metadata
+    std::string meta_value;
+    status = meta_db->Get(rocksdb::ReadOptions(), "meta", &meta_value);
+
+    if (!status.ok()) {
+        fprintf(stderr, "Failed to read metadata: %s\n", status.ToString().c_str());
+        delete meta_db;
+        return false;
+    }
+
+    delete meta_db;
+
+    // Parse format: "epoch:X,shard_id:Y,num_shards:Z,num_partitions:P,num_workers:W,timestamp:T"
+    std::map<std::string, std::string> kv_pairs;
+    std::stringstream ss(meta_value);
+    std::string pair;
+
+    while (std::getline(ss, pair, ',')) {
+        size_t colon_pos = pair.find(':');
+        if (colon_pos != std::string::npos) {
+            std::string key = pair.substr(0, colon_pos);
+            std::string value = pair.substr(colon_pos + 1);
+            kv_pairs[key] = value;
+        }
+    }
+
+    try {
+        epoch = std::stoi(kv_pairs["epoch"]);
+        shard_id = std::stoi(kv_pairs["shard_id"]);
+        num_shards = std::stoi(kv_pairs["num_shards"]);
+        num_partitions = std::stoul(kv_pairs["num_partitions"]);
+        num_workers = std::stoul(kv_pairs["num_workers"]);
+        timestamp = std::stoll(kv_pairs["timestamp"]);
+        return true;
+    } catch (...) {
+        fprintf(stderr, "Failed to parse metadata values\n");
+        return false;
+    }
+}
+
 } // namespace mako

@@ -21,7 +21,7 @@ clean:
 	# Remove all disk db
 	rm -rf /tmp/rocksdb_*
 	rm -rf /tmp/callback_demo_db*
-	rm -rf /tmp/mako_rocksdb*
+	# rm -rf /tmp/mako_rocksdb*
 	# Clean out-perf.masstree
 	rm -rf ./out-perf.masstree/*
 	# Clean mako out-perf.masstree
