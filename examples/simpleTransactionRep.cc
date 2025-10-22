@@ -6,14 +6,15 @@
 #include <chrono>
 #include <thread>
 #include <vector>
+#include <map>
 #include <mako.hh>
 #include "examples/common.h"
 #include "benchmarks/rpc_setup.h"
 #include "../src/mako/spinbarrier.h"
+#include "../src/mako/benchmarks/mbta_sharded_ordered_index.hh"
 
 using namespace std;
 using namespace mako;
-
 
 class TransactionWorker {
 public:
@@ -31,12 +32,8 @@ public:
         printf("\n--- Testing Basic Transactions Thread:%ld ---\n", std::this_thread::get_id());
 
         int home_shard_index = BenchmarkConfig::getInstance().getShardIndex() ;
-        worker_id_ = worker_id_ * 100 + home_shard_index ; 
-        abstract_ordered_index *table = db->open_index("customer_0", home_shard_index);
-        abstract_ordered_index *remote_table ;
-        if (BenchmarkConfig::getInstance().getNshards()==2) {
-            remote_table = db->open_index("customer_0", home_shard_index==0?1:0);
-        }
+        worker_id_ = worker_id_ * 100 + home_shard_index ;
+        mbta_sharded_ordered_index *table = db->open_sharded_index("customer_0");
         
         // Write 5 keys - unique per worker to avoid contention
         for (size_t i = 0; i < 5; i++) {
@@ -47,9 +44,10 @@ public:
                 table->put(txn, key, value);
 
                 if (BenchmarkConfig::getInstance().getNshards()==2) {
-                    std::string key2 = "test_key2_w" + std::to_string(worker_id_) + "_" + std::to_string(i);
+                    int remote_shard = home_shard_index==0?1:0;
+                    std::string key2 = "test_key2_w" + std::to_string(worker_id_) + "_" + std::to_string(i) + "_remote";
                     std::string value2 = mako::Encode("test_value2_w" + std::to_string(worker_id_) + "_" + std::to_string(i));
-                    remote_table->put(txn, key2, StringWrapper(value2)) ;
+                    table->put(txn, key2, value2);
                 }
 
                 db->commit_txn(txn);
@@ -89,10 +87,11 @@ public:
             bool all_reads_ok = true;
             for (size_t i = 0; i < 5; i++) {
                 void *txn = db->new_txn(0, arena, txn_buf());
-                std::string key = "test_key2_w" + std::to_string(worker_id_) + "_" + std::to_string(i);
+                int remote_shard = home_shard_index==0?1:0;
+                std::string key = "test_key2_w" + std::to_string(worker_id_) + "_" + std::to_string(i) + "_remote";
                 std::string value = "";
                 try {
-                    remote_table->get(txn, key, value);
+                    table->get(txn, key, value);
                     db->commit_txn(txn);
                     
                     std::string expected = "test_value2_w" + std::to_string(worker_id_) + "_" + std::to_string(i);
@@ -117,7 +116,7 @@ public:
         printf("\n[TEST_SINGLE_KEY] === Testing Single Key Contention Thread:%ld ===\n", std::this_thread::get_id());
 
         int home_shard_index = BenchmarkConfig::getInstance().getShardIndex();
-        abstract_ordered_index *table = db->open_index("customer_0", home_shard_index);
+        mbta_sharded_ordered_index *table = db->open_sharded_index("customer_0");
 
         // All threads write to the SAME key to create high contention
         std::string shared_key = "contention_key_shared";
@@ -169,7 +168,7 @@ public:
         printf("\n[TEST_OVERLAP_KEYS] === Testing Overlapping Keys Thread:%ld ===\n", std::this_thread::get_id());
 
         int home_shard_index = BenchmarkConfig::getInstance().getShardIndex();
-        abstract_ordered_index *table = db->open_index("customer_0", home_shard_index);
+        mbta_sharded_ordered_index *table = db->open_sharded_index("customer_0");
 
         // Workers access overlapping key ranges
         // Worker 0,1 share keys 0-4, Worker 2,3 share keys 5-9, etc.
@@ -234,8 +233,7 @@ public:
 
         int home_shard_index = BenchmarkConfig::getInstance().getShardIndex();
         int remote_shard_index = home_shard_index == 0 ? 1 : 0;
-        abstract_ordered_index *local_table = db->open_index("customer_0", home_shard_index);
-        abstract_ordered_index *remote_table = db->open_index("customer_0", remote_shard_index);
+        mbta_sharded_ordered_index *table = db->open_sharded_index("customer_0");
 
         // All threads access the same keys on both shards
         int commits = 0, aborts = 0;
@@ -246,8 +244,8 @@ public:
             std::string value = mako::Encode("worker_" + std::to_string(worker_id_) + "_iter_" + std::to_string(i));
 
             try {
-                local_table->put(txn, shared_local_key, value);
-                remote_table->put(txn, shared_remote_key, StringWrapper(value));
+                table->put(txn, shared_local_key, value);
+                table->put(txn, shared_remote_key, value);
                 db->commit_txn(txn);
                 commits++;
                 printf("[TEST_CROSS_SHARD] [Shard %d Worker %d] txn %zu (local:%d remote:%d) COMMITTED\n",
@@ -277,7 +275,7 @@ public:
             std::string local_key = "cross_shard_local";
             std::string local_value;
             try {
-                bool local_exists = local_table->get(txn, local_key, local_value);
+                bool local_exists = table->get(txn, local_key, local_value);
                 db->commit_txn(txn);
                 if (local_exists) {
                     printf("[TEST_CROSS_SHARD] [Shard %d Worker %d] Final read: local key EXISTS on shard %d\n",
@@ -302,7 +300,7 @@ public:
                 std::string remote_key = "cross_shard_remote";
                 std::string remote_value;
                 try {
-                    bool remote_exists = local_table->get(txn2, remote_key, remote_value);
+                    bool remote_exists = table->get(txn2, remote_key, remote_value);
                     db->commit_txn(txn2);
                     if (remote_exists) {
                         printf("[TEST_CROSS_SHARD] [Shard %d Worker %d] Final read: remote key EXISTS on shard %d\n",
@@ -328,7 +326,7 @@ public:
         printf("\n[TEST_RW_CONTENTION] === Testing Read-Write Contention Thread:%ld ===\n", std::this_thread::get_id());
 
         int home_shard_index = BenchmarkConfig::getInstance().getShardIndex();
-        abstract_ordered_index *table = db->open_index("customer_0", home_shard_index);
+        mbta_sharded_ordered_index *table = db->open_sharded_index("customer_0");
 
         // Half the workers read, half write to the same keys
         bool is_writer = (worker_id_ % 2 == 0);
@@ -420,14 +418,6 @@ void run_worker_tests(abstract_db *db, int worker_id,
 
 void run_tests(abstract_db* db) {
     // Pre-open tables ONCE before creating threads to avoid serialization
-    int home_shard_index = BenchmarkConfig::getInstance().getShardIndex();
-    abstract_ordered_index *table = db->open_index("customer_0", home_shard_index);
-
-    abstract_ordered_index *remote_table = nullptr;
-    if (BenchmarkConfig::getInstance().getNshards() == 2) {
-        remote_table = db->open_index("customer_0", home_shard_index == 0 ? 1 : 0);
-    }
-
     size_t nthreads = BenchmarkConfig::getInstance().getNthreads();
     std::vector<std::thread> worker_threads;
     worker_threads.reserve(nthreads);
@@ -491,27 +481,18 @@ int main(int argc, char **argv) {
     abstract_db* db = initWithDB();
 
     if (benchConfig.getLeaderConfig()) {
-        int home_shard_index = benchConfig.getShardIndex() ;
+        // pre-declare sharded tables
+        mbta_sharded_ordered_index *table = db->open_sharded_index("customer_0");
 
-        // pre-declare all local tables
-        // a table_name can be same on different shards
-        abstract_ordered_index *table = db->open_index("customer_0", home_shard_index);
-        abstract_ordered_index *table2 = db->open_index("customer_0", home_shard_index); // table and table2 are the exactly same table!
-        abstract_ordered_index *table3 = db->open_index("customer_1", home_shard_index);
-
-        if (benchConfig.getNshards()==2) {
-            // open remote table handlers
-            abstract_ordered_index *table4 = db->open_index("customer_0", home_shard_index==0?1:0);
-        }
-        
         mako::setup_erpc_server();
         map<string, abstract_ordered_index*> open_tables;
-        open_tables["customer_0"] = table;
-        mako::setup_helper(db,
-            std::ref(open_tables)) ;
-        
-        std::this_thread::sleep_for(std::chrono::seconds(5)); // Wait all shards finish setup
+        auto *local_table = table->shard_for_index(benchConfig.getShardIndex());
+        if (local_table) {
+            open_tables["customer_0"] = local_table;
+        }
+        mako::setup_helper(db, std::ref(open_tables));
 
+        std::this_thread::sleep_for(std::chrono::seconds(5)); // Wait all shards finish setup
     }
 
     if (benchConfig.getLeaderConfig()) {

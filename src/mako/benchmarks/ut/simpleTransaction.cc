@@ -10,6 +10,7 @@
 #include "benchmarks/bench.h"
 #include "benchmarks/mbta_wrapper.hh"
 #include "benchmarks/tpcc.h"
+#include "benchmarks/benchmark_config.h"
 #include "common.h"
 #include "benchmarks/sto/sync_util.hh"
 using namespace std;
@@ -28,7 +29,7 @@ public:
     }
 
     void txn_basic() {
-        static abstract_ordered_index *customerTable = simple_tpcc_worker::OpenTablesForTablespace(db, "customer_0") ;
+        static mbta_sharded_ordered_index *customerTable = simple_tpcc_worker::OpenTablesForTablespace(db, "customer_0") ;
         std::this_thread::sleep_for (std::chrono::seconds (1));
 
         // write 5 keys:
@@ -37,7 +38,7 @@ public:
             std::string key = "key_XXXXXXXXXXXXX_" + std::to_string(i);
             std::string value = mako::Encode("value_XXXXXXXXXXXXX_" + std::to_string(i));
             try {
-                customerTable->put(txn, key, StringWrapper(value));
+                customerTable->put(txn, key, value);
                 db->commit_txn(txn);
             } catch (abstract_db::abstract_abort_exception &ex) {
                 std::cout << "abort key=" << key << std::endl;
@@ -69,7 +70,7 @@ public:
     }
 
     void txn_scan() {
-        static abstract_ordered_index *customerTable = simple_tpcc_worker::OpenTablesForTablespace(db, "customer_0") ;  // shared Masstree instance
+        static mbta_sharded_ordered_index *customerTable = simple_tpcc_worker::OpenTablesForTablespace(db, "customer_0") ;  // shared Masstree instance
         std::this_thread::sleep_for (std::chrono::seconds (1));
         {
             void *txn = db->new_txn(0, arena, txn_buf(), abstract_db::HINT_TPCC_NEW_ORDER);
@@ -77,7 +78,7 @@ public:
             std::string key = "XXXXXXXXXXXX";
             std::string value = mako::Encode("2000000000000000");
             try {
-                customerTable->put(txn, key, StringWrapper(value));
+                customerTable->put(txn, key, value);
                 db->commit_txn(txn);
             } catch (abstract_db::abstract_abort_exception &ex) {
                 std::cout << "abort key=" << key << std::endl;
@@ -92,7 +93,7 @@ public:
             std::string key = "XXXXXXXXXXXX";
             std::string value = mako::Encode("1000000000000000");
             try {
-                customerTable->put(txn, key, StringWrapper(value));
+                customerTable->put(txn, key, value);
                 db->commit_txn(txn);
             } catch (abstract_db::abstract_abort_exception &ex) {
                 std::cout << "abort key=" << key << std::endl;
@@ -114,7 +115,8 @@ public:
             std::string startKey(1, WS);
             char WE = static_cast<char>(255);
             std::string endKey(1, WE);
-            customerTable->shard_scan(startKey, &endKey, c, s_arena.get());
+            auto *local_tbl = customerTable->shard_for_index(BenchmarkConfig::getInstance().getShardIndex());
+            local_tbl->shard_scan(startKey, &endKey, c, s_arena.get());
             ASSERT(c.size() == 1);
             ASSERT_EQ((*c.values[0].second).substr(0,std::string("1000000000000000").length()), "1000000000000000");
         }
@@ -125,7 +127,7 @@ public:
         scoped_str_arena s_arena(arena);
 
         // 0. load phase, load several (K,V) into table
-        static abstract_ordered_index *customerTable = simple_tpcc_worker::OpenTablesForTablespace(db, "customer_0") ;  // shared Masstree instance
+        static mbta_sharded_ordered_index *customerTable = simple_tpcc_worker::OpenTablesForTablespace(db, "customer_0") ;  // shared Masstree instance
         std::string key = "XXXXXXXXXXXX1";
         std::string value = mako::Encode("10000000XXX");
         std::string key1 = "XXXXXXXXXXXX2";
@@ -136,9 +138,9 @@ public:
             void *txn = db->new_txn(0, arena, txn_buf());
             scoped_str_arena s_arena(arena);
             try {
-                customerTable->insert(txn, key, StringWrapper(value));
-                customerTable->insert(txn, key1, StringWrapper(value1));
-                customerTable->insert(txn, key2, StringWrapper(value2));
+                customerTable->insert(txn, key, value);
+                customerTable->insert(txn, key1, value1);
+                customerTable->insert(txn, key2, value2);
                 db->commit_txn(txn);
             } catch (abstract_db::abstract_abort_exception &ex) {
                 std::cout << "abort key=" << key << std::endl;
@@ -154,11 +156,12 @@ public:
         TThread::enable_multiverison();
         {
             std::string needV = "";
-            customerTable->shard_get(key, needV);
+            auto *local_tbl = customerTable->shard_for_index(BenchmarkConfig::getInstance().getShardIndex());
+            local_tbl->shard_get(key, needV);
             //TThread::txn->print_stats();
             std::string needV2 = "";
             value = mako::Encode("30000XXXXXX");
-            customerTable->shard_put(key, value);
+            local_tbl->shard_put(key, value);
             auto valid=db->shard_validate();
             ASSERT_EQ(valid, 0);
             db->shard_install();
@@ -197,7 +200,7 @@ public:
     }
 
     void txn_replay() {
-       static abstract_ordered_index *customerTable = simple_tpcc_worker::OpenTablesForTablespace(db, "customer_0") ;
+       static mbta_sharded_ordered_index *customerTable = simple_tpcc_worker::OpenTablesForTablespace(db, "customer_0") ;
        std::this_thread::sleep_for (std::chrono::seconds (1));
 
        // write 5 keys:
@@ -234,8 +237,9 @@ public:
         scoped_db_thread_ctx ctx(db, false);
         mbta_ordered_index::mbta_type::thread_init();
     }
-    static abstract_ordered_index * OpenTablesForTablespace(abstract_db *db, const char *name) {
-       return db->open_index(name); // create a table instance: mbta_ordered_index
+    static mbta_sharded_ordered_index * OpenTablesForTablespace(abstract_db *db, const char *name) {
+       auto *table = db->open_sharded_index(name);
+       return table;
     }
 protected:
     abstract_db *const db;
