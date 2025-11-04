@@ -90,6 +90,10 @@ namespace transport
         std::map<string, SiteInfo> sites_map;
         std::vector<std::vector<string>> shard_map;
 
+        // Multi-shard support: which shards run in this process
+        bool multi_shard_mode;                  // true if running multiple shards in one process
+        std::vector<int> local_shard_indices;   // list of shard indices to run locally (e.g., [0,1,2])
+
         // Transport configuration
         mako::TransportType transport_type;
 

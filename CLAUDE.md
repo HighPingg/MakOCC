@@ -64,6 +64,9 @@ make -j32
 
 # Shard fault tolerance test (reboots shards to test independent operation)
 ./ci/ci.sh shardFaultTolerance
+
+# Multi-shard single-process mode (runs multiple shards in one process)
+./ci/ci.sh multiShardSingleProcess
 ```
 
 ## Code Architecture

@@ -78,10 +78,9 @@ void check_current_path() {
     Log_info("PWD : %s", path.string().c_str());
 }
 
-
 void server_launch_worker(vector<Config::SiteInfo>& server_sites) {
     auto config = Config::GetConfig();
-    
+
     int i = 0;
     vector<std::thread> setup_ths;
     for (auto& site_info : server_sites) {

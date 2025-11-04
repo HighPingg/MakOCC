@@ -31,6 +31,7 @@
 
 #include "lib/configuration.h"
 #include "lib/fasttransport.h"
+#include "lib/multi_transport_manager.h"
 #include "lib/common.h"
 #include "lib/server.h"
 #include "lib/rust_wrapper.h"
@@ -93,7 +94,90 @@ static void print_system_info()
 #endif
 }
 
-// init all threads
+// Global multi-transport manager (for multi-shard mode)
+static mako::MultiTransportManager* g_multi_transport_manager = nullptr;
+
+// Initialize database for a specific shard (multi-shard mode)
+// This allows creating isolated database instances for each shard
+static abstract_db* initShardDB(int shard_idx, bool is_leader, const std::string& cluster_role) {
+  auto& benchConfig = BenchmarkConfig::getInstance();
+
+  Notice("Initializing database for shard %d (cluster: %s, leader: %d)",
+         shard_idx, cluster_role.c_str(), is_leader);
+
+  // Create and initialize database instance for this shard
+  abstract_db *db = new mbta_wrapper;
+  db->init();
+
+  return db;
+}
+
+// Initialize and start transports for multi-shard mode
+static bool initMultiShardTransports(const std::vector<int>& local_shard_indices) {
+  auto& benchConfig = BenchmarkConfig::getInstance();
+  transport::Configuration* config = benchConfig.getConfig();
+
+  if (!config) {
+    Warning("Cannot initialize multi-shard transports: no configuration");
+    return false;
+  }
+
+  Notice("Initializing MultiTransportManager for %zu shards", local_shard_indices.size());
+
+  // Create MultiTransportManager
+  g_multi_transport_manager = new mako::MultiTransportManager();
+
+  // Determine local IP from first shard's configuration
+  std::string local_ip = config->shard(local_shard_indices[0], benchConfig.getClusterRole()).host;
+
+  // Initialize all transports
+  bool success = g_multi_transport_manager->InitializeAll(
+    config->configFile,
+    local_shard_indices,
+    local_ip,
+    benchConfig.getCluster(),
+    1,  // st_nr_req_types
+    12, // end_nr_req_types
+    0,  // phy_port (0 for TCP)
+    0   // numa_node
+  );
+
+  if (!success) {
+    Warning("Failed to initialize MultiTransportManager");
+    delete g_multi_transport_manager;
+    g_multi_transport_manager = nullptr;
+    return false;
+  }
+
+  // Store transport references in each ShardContext
+  for (int shard_idx : local_shard_indices) {
+    ShardContext* ctx = benchConfig.getShardContext(shard_idx);
+    if (ctx) {
+      ctx->transport = g_multi_transport_manager->GetTransport(shard_idx);
+      Notice("Assigned transport to ShardContext for shard %d", shard_idx);
+    }
+  }
+
+  // Start all transport event loops in separate threads
+  g_multi_transport_manager->RunAll();
+
+  Notice("MultiTransportManager initialized and running for %zu shards",
+         local_shard_indices.size());
+
+  return true;
+}
+
+// Stop multi-shard transports (cleanup)
+static void stopMultiShardTransports() {
+  if (g_multi_transport_manager) {
+    Notice("Stopping MultiTransportManager");
+    g_multi_transport_manager->StopAll();
+    delete g_multi_transport_manager;
+    g_multi_transport_manager = nullptr;
+  }
+}
+
+// init all threads (single-shard mode, backward compatible)
 static abstract_db* initWithDB() {
   auto& benchConfig = BenchmarkConfig::getInstance();
 
@@ -111,15 +195,15 @@ static abstract_db* initWithDB() {
   // Print system information
   print_system_info();
 
-  sync_util::sync_logger::Init(benchConfig.getShardIndex(), benchConfig.getNshards(), 
-                               benchConfig.getNthreads(), 
-                               benchConfig.getLeaderConfig()==1, /* is leader */ 
+  sync_util::sync_logger::Init(benchConfig.getShardIndex(), benchConfig.getNshards(),
+                               benchConfig.getNthreads(),
+                               benchConfig.getLeaderConfig()==1, /* is leader */
                                benchConfig.getCluster(),
                                benchConfig.getConfig());
-  
+
   abstract_db *db = new mbta_wrapper; // on the leader replica
   db->init() ;
-  return db; 
+  return db;
 }
 
 static void register_paxos_follower_callback(TSharedThreadPoolMbta& replicated_db, int thread_id)
@@ -432,14 +516,34 @@ static void wait_for_termination()
 {
   auto& benchConfig = BenchmarkConfig::getInstance();
   bool isLearner = benchConfig.getCluster().compare(mako::LEARNER_CENTER)==0 ;
-  // in case, the Paxos streams on other side is terminated, 
+
+  // Timeout after 90 seconds if no end signal is received
+  // This prevents hanging processes when leader exits abnormally or test script kills leader early
+  // 90 seconds is longer than typical test duration (60s) to ensure we don't timeout during normal runs
+  constexpr int kMaxWaitSeconds = 90;
+  int wait_count = 0;
+
+  // in case, the Paxos streams on other side is terminated,
   // not need for all no-ops for the final termination
   while (!(benchConfig.getEndReceived() > 0 || benchConfig.getEndReceivedLeader() > 0)) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
+    wait_count++;
+
     if (isLearner)
-      Notice("learner is waiting for being ended: %d/%zu, noops_cnt:%d, replay_batch:%d\n", benchConfig.getEndReceived(), benchConfig.getNthreads(), sync_util::sync_logger::noops_cnt.load(), benchConfig.getReplayBatch());
+      Notice("learner is waiting for being ended: %d/%zu, noops_cnt:%d, replay_batch:%d, wait_time:%ds\n",
+             benchConfig.getEndReceived(), benchConfig.getNthreads(),
+             sync_util::sync_logger::noops_cnt.load(), benchConfig.getReplayBatch(), wait_count);
     else
-      Notice("follower is waiting for being ended: %d/%zu, noops_cnt:%d, replay_batch:%d\n", benchConfig.getEndReceived(), benchConfig.getNthreads(), sync_util::sync_logger::noops_cnt.load(), benchConfig.getReplayBatch());
+      Notice("follower is waiting for being ended: %d/%zu, noops_cnt:%d, replay_batch:%d, wait_time:%ds\n",
+             benchConfig.getEndReceived(), benchConfig.getNthreads(),
+             sync_util::sync_logger::noops_cnt.load(), benchConfig.getReplayBatch(), wait_count);
+
+    // Timeout check: exit gracefully if we've waited too long
+    if (wait_count >= kMaxWaitSeconds) {
+      Warning("%s timed out waiting for end signal after %d seconds - exiting gracefully",
+              isLearner ? "Learner" : "Follower", kMaxWaitSeconds);
+      break;
+    }
     //if (benchConfig.getEndReceived() > 0) {std::quick_exit( EXIT_SUCCESS );}
   }
 
@@ -744,10 +848,19 @@ static void send_end_signal() {
 
 static void db_close() {
   auto& benchConfig = BenchmarkConfig::getInstance();
-  if (benchConfig.getLeaderConfig() && benchConfig.getIsReplicated())
+  if (benchConfig.getLeaderConfig() && benchConfig.getIsReplicated()) {
     send_end_signal();
+    // Give followers/learners time to receive and process the end signal
+    // before we start cleanup. This prevents race condition where leader
+    // shuts down Paxos before end signal propagates.
+    Notice("Leader sent end signal, waiting 3 seconds for propagation...");
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+  }
 
   mako::stop_helper();
+
+  // Stop multi-shard transports if running
+  stopMultiShardTransports();
 
   // Wait for termination if not a leader
   if (!benchConfig.getLeaderConfig()) {
