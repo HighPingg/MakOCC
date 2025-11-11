@@ -261,16 +261,25 @@ bool RrrRpcBackend::SendToShard(TransportReceiver* src,
         return false;
     }
 
+    // Final check before accessing response - make sure we're not stopping
+    if (stop_) {
+        Warning("RrrRpcBackend::SendToShard: stop requested before processing response, aborting");
+        rrr::Future::safe_release(fu);
+        return false;
+    }
+
     // Read response
     rrr::Marshal& resp_marshal = fu->get_reply();
     std::vector<char> resp_buffer(tls_buffers.response_len);
     resp_marshal.read(resp_buffer.data(), tls_buffers.response_len);
 
-    // Deliver response to receiver
-    src->ReceiveResponse(req_type, resp_buffer.data());
+    // Deliver response to receiver (only if not stopping)
+    if (!stop_ && src) {
+        src->ReceiveResponse(req_type, resp_buffer.data());
+    }
 
     rrr::Future::safe_release(fu);
-    return true;
+    return !stop_;
 }
 
 // Send request to multiple shards
@@ -341,6 +350,13 @@ bool RrrRpcBackend::SendToAll(TransportReceiver* src,
 
         fu->wait();
 
+        // Check stop again after wait
+        if (stop_) {
+            Warning("RrrRpcBackend::SendToAll: stop requested after wait, aborting (req_type=%d)", req_type);
+            rrr::Future::safe_release(fu);
+            continue;
+        }
+
         if (fu->get_error_code() != 0) {
             Warning("RPC error: %d", fu->get_error_code());
             rrr::Future::safe_release(fu);
@@ -352,13 +368,15 @@ bool RrrRpcBackend::SendToAll(TransportReceiver* src,
         std::vector<char> resp_buffer(resp_len);
         resp_marshal.read(resp_buffer.data(), resp_len);
 
-        // Deliver response
-        src->ReceiveResponse(req_type, resp_buffer.data());
+        // Deliver response (only if not stopping and src is valid)
+        if (!stop_ && src) {
+            src->ReceiveResponse(req_type, resp_buffer.data());
+        }
 
         rrr::Future::safe_release(fu);
     }
 
-    return true;
+    return !stop_;
 }
 
 // Send batch request to multiple shards
@@ -400,7 +418,21 @@ bool RrrRpcBackend::SendBatchToAll(TransportReceiver* src,
 
     // Wait for all responses
     for (rrr::Future* fu : futures) {
+        // Check if stop was requested before waiting
+        if (stop_) {
+            Warning("RrrRpcBackend::SendBatchToAll: stop requested, aborting wait (req_type=%d)", req_type);
+            rrr::Future::safe_release(fu);
+            continue;
+        }
+
         fu->wait();
+
+        // Check stop again after wait
+        if (stop_) {
+            Warning("RrrRpcBackend::SendBatchToAll: stop requested after wait, aborting (req_type=%d)", req_type);
+            rrr::Future::safe_release(fu);
+            continue;
+        }
 
         if (fu->get_error_code() != 0) {
             Warning("RPC error: %d", fu->get_error_code());
@@ -413,12 +445,15 @@ bool RrrRpcBackend::SendBatchToAll(TransportReceiver* src,
         std::vector<char> resp_buffer(resp_len);
         resp_marshal.read(resp_buffer.data(), resp_len);
 
-        src->ReceiveResponse(req_type, resp_buffer.data());
+        // Deliver response (only if not stopping and src is valid)
+        if (!stop_ && src) {
+            src->ReceiveResponse(req_type, resp_buffer.data());
+        }
 
         rrr::Future::safe_release(fu);
     }
 
-    return true;
+    return !stop_;
 }
 
 // Run event loop
@@ -430,6 +465,11 @@ void RrrRpcBackend::RunEventLoop() {
     while (!stop_) {
         // Process responses from all helper queues
         for (auto& it : queue_holders_response_) {
+            // Check stop flag before processing each queue
+            if (stop_) {
+                break;
+            }
+
             auto server_id = it.first;
             auto* server_queue = it.second;
 
@@ -438,6 +478,11 @@ void RrrRpcBackend::RunEventLoop() {
 
             // Fetch responses from helper thread queue
             while (!server_queue->is_req_buffer_empty()) {
+                // Check stop flag before processing each response
+                if (stop_) {
+                    break;
+                }
+
                 server_queue->fetch_one_req(&req_handle_ptr, msg_size);
 
                 // Cast back to void* key and lookup RrrRequestHandle
@@ -455,6 +500,12 @@ void RrrRpcBackend::RunEventLoop() {
                 std::unique_ptr<RrrRequestHandle> rrr_handle = std::move(map_it->second);
                 rrr_request_map_.erase(map_it);
                 rrr_request_map_lock_.unlock();
+
+                // Validate connection is still valid before sending response
+                if (!rrr_handle->sconn) {
+                    Warning("ServerConnection is null, skipping response");
+                    continue;
+                }
 
                 // Send response back via rrr/rpc
                 rrr_handle->sconn->begin_reply(*rrr_handle->original_request);
@@ -487,6 +538,11 @@ void RrrRpcBackend::Stop() {
 
     Notice("RrrRpcBackend::Stop: BEGIN - Setting stop flag");
 
+    // Give event loop time to detect stop flag and exit gracefully
+    // The event loop checks stop_ flag frequently and will exit
+    Notice("RrrRpcBackend::Stop: Waiting for event loop to exit...");
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
     // Signal all helper queues to stop (both request and response queues)
     Notice("RrrRpcBackend::Stop: Signaling %zu request queues to stop", queue_holders_.size());
     for (auto& entry : queue_holders_) {
@@ -502,6 +558,16 @@ void RrrRpcBackend::Stop() {
             Notice("RrrRpcBackend::Stop: Stopping response queue for server_id %d", entry.first);
             entry.second->request_stop();
         }
+    }
+
+    // Shutdown server to stop accepting new connections (BEFORE closing clients)
+    if (server_) {
+        Notice("RrrRpcBackend::Stop: Deleting server (to stop new connections)");
+        delete server_;
+        server_ = nullptr;
+        Notice("RrrRpcBackend::Stop: Server deleted");
+    } else {
+        Notice("RrrRpcBackend::Stop: No server to delete");
     }
 
     // Close all outstanding client connections to unblock any waiting futures.
@@ -523,14 +589,14 @@ void RrrRpcBackend::Stop() {
     }
     Notice("RrrRpcBackend::Stop: Closed %zu client connections", clients_to_close.size());
 
-    // Shutdown server to stop accepting new connections
-    if (server_) {
-        Notice("RrrRpcBackend::Stop: Deleting server");
-        delete server_;
-        server_ = nullptr;
-        Notice("RrrRpcBackend::Stop: Server deleted");
-    } else {
-        Notice("RrrRpcBackend::Stop: No server to delete");
+    // Clean up any remaining pending requests in the map
+    {
+        std::lock_guard<std::mutex> guard(rrr_request_map_lock_);
+        size_t remaining = rrr_request_map_.size();
+        if (remaining > 0) {
+            Notice("RrrRpcBackend::Stop: Cleaning up %zu remaining pending requests", remaining);
+            rrr_request_map_.clear();
+        }
     }
 
     Notice("RrrRpcBackend stats: msg_size_resp_sent: %" PRIu64 " bytes, counter: %d, avg: %lf",
@@ -550,6 +616,12 @@ void RrrRpcBackend::PrintStats() {
 void RrrRpcBackend::RequestHandler(uint8_t req_type, rusty::Box<rrr::Request> req, std::weak_ptr<rrr::ServerConnection> weak_sconn, RrrRpcBackend* backend) {
     if (!backend) {
         Warning("RequestHandler called with null backend pointer!");
+        return;
+    }
+
+    // Check if backend is stopping - don't process new requests during shutdown
+    if (backend->stop_) {
+        Debug("RequestHandler: Backend is stopping, ignoring request type %d", req_type);
         return;
     }
 

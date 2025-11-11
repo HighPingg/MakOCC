@@ -46,8 +46,13 @@ sleep 60
 
 # Kill the processes
 echo "Stopping shards..."
-kill $SHARD0_PID $SHARD1_PID 2>/dev/null
-wait $SHARD0_PID $SHARD1_PID 2>/dev/null
+# Kill all dbtest processes (all 8 instances: 4 per shard with different cluster names)
+pkill -9 -f "dbtest.*shard-index 0" 2>/dev/null || true
+pkill -9 -f "dbtest.*shard-index 1" 2>/dev/null || true
+sleep 2
+# Original cleanup for good measure
+kill $SHARD0_PID $SHARD1_PID 2>/dev/null || true
+wait $SHARD0_PID $SHARD1_PID 2>/dev/null || true
 
 echo ""
 echo "========================================="

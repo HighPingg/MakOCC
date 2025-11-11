@@ -45,11 +45,21 @@ cleanup_processes() {
     mkdir -p ~/results/$result
     rm -f nfs_*
     echo "Cleaning up any lingering test processes..."
+
+    # Kill test executables
     pkill -9 -f simpleTransactionRep 2>/dev/null || true
     pkill -9 -f dbtest 2>/dev/null || true
     pkill -9 -f simplePaxos 2>/dev/null || true
     pkill -9 -f simpleTransaction 2>/dev/null || true
+
+    # Kill test wrapper scripts (2shard tests with/without replication)
+    pkill -9 -f "test_2shard_no_replication.sh" 2>/dev/null || true
+    pkill -9 -f "test_2shard_replication.sh" 2>/dev/null || true
+    pkill -9 -f "test_1shard_replication.sh" 2>/dev/null || true
+    pkill -9 -f "bash/shard.sh" 2>/dev/null || true
+
     sleep 3  # Give OS time to fully terminate processes and release ports
+
     # Wait for ports to be released (check common test ports)
     for i in {1..10}; do
         if ! lsof -i :7001-8006 >/dev/null 2>&1 && ! lsof -i :31000-31100 >/dev/null 2>&1; then
@@ -57,6 +67,7 @@ cleanup_processes() {
         fi
         sleep 1
     done
+
     cp *.log ~/results/$result/  2>/dev/null || true
     echo "Cleanup complete."
 }
