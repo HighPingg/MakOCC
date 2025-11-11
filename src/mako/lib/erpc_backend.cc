@@ -19,6 +19,7 @@
 #include <numa.h>
 #include <thread>
 #include <sched.h>
+#include <inttypes.h>
 
 using namespace mako;
 
@@ -559,14 +560,14 @@ void ErpcBackend::Stop() {
     stop_ = true;
     break_timeout_ = true;
 
-    Notice("ErpcBackend stats: msg_size_resp_sent: %d bytes, counter: %d, avg: %lf",
+    Notice("ErpcBackend stats: msg_size_resp_sent: %" PRIu64 " bytes, counter: %d, avg: %lf",
            context_->msg_size_resp_sent, context_->msg_counter_resp_sent,
            context_->msg_size_resp_sent / (context_->msg_counter_resp_sent + 0.0));
 }
 
 // Print statistics
 void ErpcBackend::PrintStats() {
-    Notice("ErpcBackend request stats: msg_size_req_sent: %d bytes, counter: %d, avg: %lf",
+    Notice("ErpcBackend request stats: msg_size_req_sent: %" PRIu64 " bytes, counter: %d, avg: %lf",
            context_->msg_size_req_sent, context_->msg_counter_req_sent,
            context_->msg_size_req_sent / (context_->msg_counter_req_sent + 0.0));
 }

@@ -41,6 +41,9 @@ Hanging processes:"
 
 # Cleanup function: Kill any lingering test processes
 cleanup_processes() {
+    result=ci_results_${RUN_NUM}_${RUN_INDEX}
+    mkdir -p ~/results/$result
+    rm -f nfs_*
     echo "Cleaning up any lingering test processes..."
     pkill -9 -f simpleTransactionRep 2>/dev/null || true
     pkill -9 -f dbtest 2>/dev/null || true
@@ -54,6 +57,7 @@ cleanup_processes() {
         fi
         sleep 1
     done
+    cp *.log ~/results/$result/  2>/dev/null || true
     echo "Cleanup complete."
 }
 
@@ -182,10 +186,21 @@ run_multi_shard_single_process() {
     [ $test_result -eq 0 ] && [ $hanging_check -eq 0 ]
 }
 
+cleanup() {
+    cleanup_processes
+    make clean
+    rm -rf ./out-perf.masstree/*
+    rm -rf ./src/mako/out-perf.masstree/*
+    rm -rf build/*
+}
+
 # Main entry point with command parsing
 case "${1:-}" in
     compile)
         compile
+        ;;
+    cleanup)
+       cleanup 
         ;;
     simpleTransaction)
         run_simple_transaction

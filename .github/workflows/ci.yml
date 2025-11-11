@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ mako-dev ]
+    branches: [ mako-dev, mako-weihai ]
   workflow_dispatch:
 
 # Cancel superseded runs when you push new commits to the same PR/branch
@@ -19,6 +19,10 @@ jobs:
       matrix:
         build_type: [Release]
         run_number: [1, 2, 3]
+    env:
+      RUN_INDEX: ${{ matrix.run_number }}     # 1, 2, or 3 (per matrix job)
+      RUN_NUM: ${{ github.run_number }}       # monotonically increasing per workflow
+      RUN_ID: ${{ github.run_id }}            # unique per workflow run
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,6 +36,8 @@ jobs:
           echo "RUNNER_TEMP=$RUNNER_TEMP"
           echo "RUNNER_TOOL_CACHE=$RUNNER_TOOL_CACHE"
           echo "RUN_NUMBER=${{ matrix.run_number }}"
+          echo "RUN_NUM=${{ github.run_number }}"
+          echo "RUN_ID=${{ github.run_id }}"
 
       - name: Compile
         run: ./ci/ci.sh compile 
@@ -62,4 +68,4 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: ./ci/clean.sh
+        run: ./ci/ci.sh cleanup
