@@ -65,7 +65,7 @@ for i in 0 1; do
     if grep -q "agg_persist_throughput" "$log"; then
         echo "  ✓ Found 'agg_persist_throughput' keyword"
         # Show the line for reference
-        grep "agg_persist_throughput" "$log" | tail -1 | sed 's/^/    /'
+        grep "agg_persist_throughput" "$log" | tail -n 1 | sed 's/^/    /'
     else
         echo "  ✗ 'agg_persist_throughput' keyword not found"
         failed=1
@@ -74,7 +74,7 @@ for i in 0 1; do
     # Check NewOrder_remote_abort_ratio
     if grep -q "NewOrder_remote_abort_ratio:" "$log"; then
         # Extract the abort ratio value
-        abort_ratio=$(grep "NewOrder_remote_abort_ratio:" "$log" | tail -1 | awk '{print $2}')
+        abort_ratio=$(grep "NewOrder_remote_abort_ratio:" "$log" | tail -n 1 | awk '{print $2}')
         
         if [ -z "$abort_ratio" ]; then
             echo "  ✗ Could not extract NewOrder_remote_abort_ratio value"
@@ -109,6 +109,6 @@ else
     echo ""
     echo "Debug information:"
     echo "Check ${log_prefix}_shard*-$trd for details"
-    tail -10 ${log_prefix}_shard0-$trd.log ${log_prefix}_shard1-$trd.log
+    tail -n 10 ${log_prefix}_shard0-$trd.log ${log_prefix}_shard1-$trd.log
     exit 1
 fi

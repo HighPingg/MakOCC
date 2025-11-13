@@ -145,7 +145,12 @@ bench_worker::run()
 
         // Unpaused previous blocked threads if any
         for (int par_id=0;par_id<benchConfig.getNthreads();par_id++){
-           shardClientAll[par_id]->setBlocking(false);
+           auto it = shardClientAll.find(par_id);
+           if (it != shardClientAll.end() && it->second != nullptr) {
+             it->second->setBlocking(false);
+           } else {
+             Warning("ShardClient for par_id=%d is nullptr in setBlocking, skipping", par_id);
+           }
         }
         break;
       }
@@ -327,7 +332,12 @@ bench_runner::stop() { // invoke inside run function; stop all ShardClient insta
   Warning("stop all erpc clients. set stop=false");
   auto& benchConfig = BenchmarkConfig::getInstance();
   for (int par_id=0;par_id<benchConfig.getNthreads();par_id++){
-   shardClientAll[par_id]->stop();
+   auto it = shardClientAll.find(par_id);
+   if (it != shardClientAll.end() && it->second != nullptr) {
+     it->second->stop();
+   } else {
+     Warning("ShardClient for par_id=%d is nullptr, skipping stop()", par_id);
+   }
   }
 }
 
