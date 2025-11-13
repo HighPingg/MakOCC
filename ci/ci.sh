@@ -262,6 +262,17 @@ run_multi_shard_single_process() {
     [ $test_result -eq 0 ] && [ $hanging_check -eq 0 ]
 }
 
+run_rrr_unit_tests() {
+    echo "========================================="
+    echo "Running: ./ci/ci.sh rrrTests"
+    echo "========================================="
+    cd build
+    ctest
+    local test_result=$?
+    cd ..
+    return $test_result
+}
+
 cleanup() {
     cleanup_processes
     make clean
@@ -314,9 +325,13 @@ case "${1:-}" in
     multiShardSingleProcess)
         run_multi_shard_single_process
         ;;
+    rrrTests)
+        run_rrr_unit_tests
+        ;;
     all)
         # Run all steps in sequence
         compile
+        run_rrr_unit_tests
         run_simple_transaction
         run_simple_paxos
         run_2shard_no_replication

@@ -40,7 +40,9 @@ RrrRpcBackend::RrrRpcBackend(const transport::Configuration& config,
 
 // Destructor
 RrrRpcBackend::~RrrRpcBackend() {
+    Notice("RrrRpcBackend::~RrrRpcBackend: START destructor");
     Shutdown();
+    Notice("RrrRpcBackend::~RrrRpcBackend: Shutdown() completed");
 }
 
 // Initialize the backend
@@ -96,11 +98,40 @@ void RrrRpcBackend::Shutdown() {
     // - Signaling helper queues to stop
     Stop();
 
-    // Shutdown poll thread worker
-    // Note: PollThreadWorker shuts down automatically when Arc goes out of scope
-    if (poll_thread_worker_) {
-        poll_thread_worker_ = rusty::Arc<rrr::PollThreadWorker>();
+    Notice("RrrRpcBackend::Shutdown: About to delete server");
+
+    // Delete server first (before shutting down poll_thread_worker)
+    if (server_) {
+        Notice("RrrRpcBackend::Shutdown: Server pointer is valid, deleting...");
+        try {
+            delete server_;
+            server_ = nullptr;
+            Notice("RrrRpcBackend::Shutdown: Server deleted successfully");
+        } catch (const std::exception& e) {
+            Warning("RrrRpcBackend::Shutdown: Exception during server deletion: %s", e.what());
+            server_ = nullptr;
+        } catch (...) {
+            Warning("RrrRpcBackend::Shutdown: Unknown exception during server deletion");
+            server_ = nullptr;
+        }
+    } else {
+        Notice("RrrRpcBackend::Shutdown: Server pointer is null, skipping deletion");
     }
+
+    Notice("RrrRpcBackend::Shutdown: About to shutdown poll_thread_worker_");
+
+    // Shutdown poll thread worker explicitly (after server is deleted)
+    if (poll_thread_worker_) {
+        Notice("RrrRpcBackend::Shutdown: poll_thread_worker_ is valid, calling shutdown()");
+        poll_thread_worker_->shutdown();
+        Notice("RrrRpcBackend::Shutdown: poll_thread_worker_->shutdown() completed");
+        poll_thread_worker_ = rusty::Arc<rrr::PollThreadWorker>();
+        Notice("RrrRpcBackend::Shutdown: poll_thread_worker_ reset to empty Arc");
+    } else {
+        Notice("RrrRpcBackend::Shutdown: poll_thread_worker_ is null, skipping shutdown");
+    }
+
+    Notice("RrrRpcBackend::Shutdown: Shutdown sequence completed, destructor will now exit");
 }
 
 namespace {
@@ -246,7 +277,11 @@ bool RrrRpcBackend::SendToShard(TransportReceiver* src,
     Debug("RrrRpcBackend::SendToShard: Waiting for response");
 
     // Wait for response
-    fu->wait();
+    fu->timed_wait(1);
+
+    if (fu->timed_out()) {
+        throw 1002;
+    }
 
     // Check stop again after wait - client might have been closed during wait
     if (stop_) {
@@ -348,7 +383,12 @@ bool RrrRpcBackend::SendToAll(TransportReceiver* src,
             continue;
         }
 
-        fu->wait();
+        // Wait for response with timeout, checking stop flag periodically
+        fu->timed_wait(1);
+
+        if (fu->timed_out()) {
+            throw 1002;
+        }
 
         // Check stop again after wait
         if (stop_) {
@@ -425,7 +465,12 @@ bool RrrRpcBackend::SendBatchToAll(TransportReceiver* src,
             continue;
         }
 
-        fu->wait();
+        // Wait for response with timeout, checking stop flag periodically
+        fu->timed_wait(1);
+
+        if (fu->timed_out()) {
+            throw 1002;
+        }
 
         // Check stop again after wait
         if (stop_) {
@@ -580,23 +625,10 @@ void RrrRpcBackend::Stop() {
         }
     }
 
-    // Shutdown server to stop accepting new connections (BEFORE closing clients)
-    if (server_) {
-        Notice("RrrRpcBackend::Stop: Deleting server (to stop new connections)");
-        try {
-            delete server_;
-            server_ = nullptr;
-            Notice("RrrRpcBackend::Stop: Server deleted");
-        } catch (const std::exception& e) {
-            Warning("RrrRpcBackend::Stop: Exception during server deletion: %s", e.what());
-            server_ = nullptr;
-        } catch (...) {
-            Warning("RrrRpcBackend::Stop: Unknown exception during server deletion");
-            server_ = nullptr;
-        }
-    } else {
-        Notice("RrrRpcBackend::Stop: No server to delete");
-    }
+    // Note: We don't delete the server here because its destructor blocks on Pthread_join
+    // which can deadlock. The server will be cleaned up in the destructor after
+    // poll_thread_worker shutdown.
+    Notice("RrrRpcBackend::Stop: Server cleanup deferred to destructor");
 
     // Close all outstanding client connections to unblock any waiting futures.
     Notice("RrrRpcBackend::Stop: Closing client connections");
@@ -640,6 +672,7 @@ void RrrRpcBackend::Stop() {
            msg_size_resp_sent_ / (msg_counter_resp_sent_ + 0.0));
     Notice("RrrRpcBackend::Stop: END");
 }
+
 
 // Print statistics
 void RrrRpcBackend::PrintStats() {

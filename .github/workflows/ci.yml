@@ -40,7 +40,10 @@ jobs:
           echo "RUN_ID=${{ github.run_id }}"
 
       - name: Compile
-        run: ./ci/ci.sh compile 
+        run: ./ci/ci.sh compile
+
+      - name: Run tests - RRR unit tests
+        run: ./ci/ci.sh rrrTests
 
       - name: Run tests - simple transaction
         run: ./ci/ci.sh simpleTransaction
