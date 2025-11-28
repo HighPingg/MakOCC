@@ -72,6 +72,7 @@ namespace janus {
 #define MODE_NONE   (0x00)
 #define MODE_2PL    (0x01)
 #define MODE_OCC    (0x02)
+#define MODE_MOCC   (0x05)   // Mixed OCC - temperature-based hybrid locking
 #define MODE_RCC    (0x04)
 #define MODE_RO6    (0x08)
 #define MODE_BRQ    (0x10)

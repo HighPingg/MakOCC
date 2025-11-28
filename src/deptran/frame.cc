@@ -15,6 +15,10 @@
 #include "2pl/coordinator.h"
 #include "occ/tx.h"
 #include "occ/coordinator.h"
+#include "mocc/frame.h"
+#include "mocc/coordinator.h"
+#include "mocc/scheduler.h"
+#include "mocc/tx.h"
 
 #include "bench/tpcc_real_dist/sharding.h"
 #include "bench/tpcc/workload.h"
@@ -73,6 +77,9 @@ Frame* Frame::GetFrame(int mode) {
     case MODE_2PL:
     case MODE_OCC:
       frame = new Frame(mode);
+      break;
+    case MODE_MOCC:
+      frame = new FrameMocc();
       break;
     case MODE_EXTERNC:
       frame = new ExternCFrame();
@@ -154,6 +161,7 @@ mdb::Row* Frame::CreateRow(const mdb::Schema *schema,
     case MODE_NONE: // FIXME
     case MODE_MDCC:
     case MODE_OCC:
+    case MODE_MOCC:
     default:
       r = mdb::VersionedRow::create(schema, row_data);
       break;
@@ -183,6 +191,13 @@ Coordinator* Frame::CreateCoordinator(cooid_t coo_id,
     case MODE_OCC:
     case MODE_RPC_NULL:
       coo = new CoordinatorOcc(coo_id,
+                         benchmark,
+                         ccsi,
+                         id);
+      ((Coordinator*)coo)->txn_reg_ = txn_reg;
+      break;
+    case MODE_MOCC:
+      coo = new CoordinatorMocc(coo_id,
                          benchmark,
                          ccsi,
                          id);
@@ -307,6 +322,9 @@ shared_ptr<Tx> Frame::CreateTx(epoch_t epoch, txnid_t tid,
     case MODE_OCC:
       sp_tx.reset(new TxOcc(epoch, tid, mgr));
       break;
+    case MODE_MOCC:
+      sp_tx.reset(new TxMocc(epoch, tid, mgr));
+      break;
     case MODE_RCC:
       sp_tx.reset(new RccTx(epoch, tid, mgr, ro));
       break;
@@ -350,6 +368,9 @@ TxLogServer* Frame::CreateScheduler() {
       break;
     case MODE_OCC:
       sch = new SchedulerOcc();
+      break;
+    case MODE_MOCC:
+      sch = new SchedulerMocc();
       break;
     case MODE_MDCC:
 //      sch = new mdcc::MdccScheduler();
@@ -420,6 +441,8 @@ map<string, int> &Frame::FrameNameToMode() {
       {"none",          MODE_NONE},
       {"2pl",           MODE_2PL},
       {"occ",           MODE_OCC},
+      {"mocc",          MODE_MOCC},
+      {"MOCC",          MODE_MOCC},
       {"snow",           MODE_RO6},
       {"rpc_null",      MODE_RPC_NULL},
       {"deptran",       MODE_DEPTRAN},
