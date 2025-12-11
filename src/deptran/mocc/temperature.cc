@@ -1,17 +1,37 @@
 /**
  * MOCC Temperature Tracking Implementation
+ * 
+ * Implements MOCC paper Section 3.2:
+ * - Approximate counters to reduce cacheline invalidation
+ * - Temperature only increases on abort
+ * - Periodic reset for workload adaptation
  */
 
 #include "temperature.h"
+#include <cmath>
 
 namespace janus {
+
+// Thread-local random number generator for approximate counter
+thread_local std::mt19937 TemperatureTracker::rng_(std::random_device{}());
+thread_local std::uniform_real_distribution<double> TemperatureTracker::dist_(0.0, 1.0);
+
+TemperatureTracker::TemperatureTracker() {
+  last_global_reset_time_.store(GetCurrentTimeMs(), std::memory_order_relaxed);
+}
+
+void* TemperatureTracker::GetPageAddress(void* row) const {
+  // Align to page boundary (4KB pages)
+  uintptr_t addr = reinterpret_cast<uintptr_t>(row);
+  return reinterpret_cast<void*>(addr & ~(PAGE_SIZE - 1));
+}
 
 TemperatureLevel TemperatureTracker::GetLevel(void* row, int col_id) {
   uint32_t temp = GetTemperature(row, col_id);
   
   if (temp >= MOCC_HOT_THRESHOLD) {
     return TemperatureLevel::HOT;
-  } else if (temp >= MOCC_COLD_THRESHOLD) {
+  } else if (temp >= MOCC_WARM_THRESHOLD) {
     return TemperatureLevel::WARM;
   } else {
     return TemperatureLevel::COLD;
@@ -19,7 +39,8 @@ TemperatureLevel TemperatureTracker::GetLevel(void* row, int col_id) {
 }
 
 uint32_t TemperatureTracker::GetTemperature(void* row, int col_id) {
-  RowColKey key{row, col_id};
+  void* page_addr = GetPageAddress(row);
+  PageKey key{page_addr};
   
   std::shared_lock<std::shared_mutex> lock(mutex_);
   auto it = temperatures_.find(key);
@@ -29,115 +50,109 @@ uint32_t TemperatureTracker::GetTemperature(void* row, int col_id) {
   return it->second->temperature.load(std::memory_order_relaxed);
 }
 
-void TemperatureTracker::IncrementTemperature(void* row, int col_id, uint32_t increment) {
-  RecordTemperature& temp = GetOrCreate(row, col_id);
+bool TemperatureTracker::ShouldIncrement(uint32_t current_temp) {
+  // MOCC Algorithm 2: Approximate counter
+  // Increment with probability 2^(-temp)
+  // This reduces cacheline invalidation on hot pages
   
-  // Atomic increment with cap
+  if (current_temp == 0) {
+    return true;  // Always increment from 0
+  }
+  
+  if (current_temp >= MOCC_MAX_TEMPERATURE) {
+    return false;  // At cap, don't increment
+  }
+  
+  // Probability = 2^(-temp)
+  double probability = std::pow(2.0, -static_cast<double>(current_temp));
+  return dist_(rng_) < probability;
+}
+
+void TemperatureTracker::RecordAbort(void* row, int col_id) {
+  // MOCC paper: Temperature ONLY increases on abort
+  void* page_addr = GetPageAddress(row);
+  PageTemperature& temp = GetOrCreate(page_addr);
+  
+  uint32_t current = temp.temperature.load(std::memory_order_relaxed);
+  
+  // Use approximate counter: increment with probability 2^(-temp)
+  if (ShouldIncrement(current)) {
+    uint32_t new_temp;
+    do {
+      new_temp = std::min(current + 1, MOCC_MAX_TEMPERATURE);
+    } while (!temp.temperature.compare_exchange_weak(current, new_temp,
+                                                      std::memory_order_relaxed));
+  }
+}
+
+void TemperatureTracker::RecordCommit(void* row, int col_id) {
+  // MOCC paper: Commits do NOT decrease temperature
+  // Temperature only decreases via periodic reset
+  // This method is kept for API compatibility but does nothing
+  (void)row;
+  (void)col_id;
+}
+
+void TemperatureTracker::IncrementTemperature(void* row, int col_id, uint32_t increment) {
+  // NOTE: In MOCC, temperature should ONLY increase on abort.
+  // This method is kept for backward compatibility but will be deprecated.
+  // Consider calling RecordAbort() instead.
+  
+  // For now, we'll allow direct increment but cap it
+  void* page_addr = GetPageAddress(row);
+  PageTemperature& temp = GetOrCreate(page_addr);
+  
   uint32_t current = temp.temperature.load(std::memory_order_relaxed);
   uint32_t new_temp;
   do {
     new_temp = std::min(current + increment, MOCC_MAX_TEMPERATURE);
   } while (!temp.temperature.compare_exchange_weak(current, new_temp,
                                                     std::memory_order_relaxed));
-  
-  // Update last access time
-  temp.last_access_time.store(GetCurrentTimeMs(), std::memory_order_relaxed);
-}
-
-void TemperatureTracker::RecordAbort(void* row, int col_id) {
-  RecordTemperature& temp = GetOrCreate(row, col_id);
-  
-  // Increment abort count
-  temp.abort_count.fetch_add(1, std::memory_order_relaxed);
-  
-  // Increase temperature more significantly on abort (by 3)
-  uint32_t current = temp.temperature.load(std::memory_order_relaxed);
-  uint32_t new_temp;
-  do {
-    new_temp = std::min(current + 3, MOCC_MAX_TEMPERATURE);
-  } while (!temp.temperature.compare_exchange_weak(current, new_temp,
-                                                    std::memory_order_relaxed));
-  
-  temp.last_access_time.store(GetCurrentTimeMs(), std::memory_order_relaxed);
-}
-
-void TemperatureTracker::RecordCommit(void* row, int col_id) {
-  RowColKey key{row, col_id};
-  
-  std::shared_lock<std::shared_mutex> lock(mutex_);
-  auto it = temperatures_.find(key);
-  if (it == temperatures_.end()) {
-    return;  // No temperature entry, nothing to update
-  }
-  
-  RecordTemperature& temp = *it->second;
-  
-  // Slightly decrease temperature on commit (encourages optimism)
-  uint32_t current = temp.temperature.load(std::memory_order_relaxed);
-  if (current > 0) {
-    temp.temperature.compare_exchange_weak(current, current - 1,
-                                           std::memory_order_relaxed);
-  }
 }
 
 void TemperatureTracker::ApplyDecay() {
   uint64_t now = GetCurrentTimeMs();
-  uint64_t last_decay = last_global_decay_time_.load(std::memory_order_relaxed);
+  uint64_t last_reset = last_global_reset_time_.load(std::memory_order_relaxed);
   
-  // Only decay if enough time has passed
-  if (now - last_decay < MOCC_DECAY_INTERVAL_MS) {
+  // Only reset if enough time has passed
+  if (now - last_reset < MOCC_DECAY_INTERVAL_MS) {
     return;
   }
   
-  // Try to claim the decay operation
-  if (!last_global_decay_time_.compare_exchange_strong(last_decay, now,
+  // Try to claim the reset operation
+  if (!last_global_reset_time_.compare_exchange_strong(last_reset, now,
                                                         std::memory_order_relaxed)) {
-    return;  // Another thread is doing decay
+    return;  // Another thread is doing reset
   }
   
-  // Apply decay to all records
-  std::shared_lock<std::shared_mutex> lock(mutex_);
+  // MOCC paper: Periodically reset temperatures to zero
+  // This allows the system to adapt to workload changes
+  std::unique_lock<std::shared_mutex> lock(mutex_);
   for (auto& pair : temperatures_) {
-    ApplyDecayToRecord(*pair.second);
+    pair.second->temperature.store(0, std::memory_order_relaxed);
+    pair.second->last_reset_time.store(now, std::memory_order_relaxed);
   }
-}
-
-void TemperatureTracker::ApplyDecayToRecord(RecordTemperature& temp) {
-  uint64_t now = GetCurrentTimeMs();
-  uint64_t last_decay = temp.last_decay_time.load(std::memory_order_relaxed);
-  
-  if (now - last_decay < MOCC_DECAY_INTERVAL_MS) {
-    return;
-  }
-  
-  // Apply exponential decay
-  uint32_t current = temp.temperature.load(std::memory_order_relaxed);
-  if (current > 0) {
-    uint32_t new_temp = static_cast<uint32_t>(current * MOCC_DECAY_FACTOR);
-    temp.temperature.store(new_temp, std::memory_order_relaxed);
-  }
-  
-  temp.last_decay_time.store(now, std::memory_order_relaxed);
 }
 
 void TemperatureTracker::ResetTemperature(void* row, int col_id) {
-  RowColKey key{row, col_id};
+  void* page_addr = GetPageAddress(row);
+  PageKey key{page_addr};
   
-  std::unique_lock<std::shared_mutex> lock(mutex_);
+  std::shared_lock<std::shared_mutex> lock(mutex_);
   auto it = temperatures_.find(key);
   if (it != temperatures_.end()) {
     it->second->temperature.store(0, std::memory_order_relaxed);
-    it->second->abort_count.store(0, std::memory_order_relaxed);
   }
 }
 
 void TemperatureTracker::Clear() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
   temperatures_.clear();
+  last_global_reset_time_.store(GetCurrentTimeMs(), std::memory_order_relaxed);
 }
 
-RecordTemperature& TemperatureTracker::GetOrCreate(void* row, int col_id) {
-  RowColKey key{row, col_id};
+PageTemperature& TemperatureTracker::GetOrCreate(void* page_addr) {
+  PageKey key{page_addr};
   
   // First try with shared lock (read)
   {
@@ -158,8 +173,8 @@ RecordTemperature& TemperatureTracker::GetOrCreate(void* row, int col_id) {
   }
   
   // Create new entry
-  auto temp = std::make_unique<RecordTemperature>();
-  temp->last_decay_time.store(GetCurrentTimeMs(), std::memory_order_relaxed);
+  auto temp = std::make_unique<PageTemperature>();
+  temp->last_reset_time.store(GetCurrentTimeMs(), std::memory_order_relaxed);
   auto& ref = *temp;
   temperatures_[key] = std::move(temp);
   return ref;
@@ -176,7 +191,7 @@ TemperatureTracker::Stats TemperatureTracker::GetStats() {
     
     if (temp >= MOCC_HOT_THRESHOLD) {
       stats.hot_records++;
-    } else if (temp >= MOCC_COLD_THRESHOLD) {
+    } else if (temp >= MOCC_WARM_THRESHOLD) {
       stats.warm_records++;
     } else {
       stats.cold_records++;
@@ -187,7 +202,3 @@ TemperatureTracker::Stats TemperatureTracker::GetStats() {
 }
 
 } // namespace janus
-
-
-
-

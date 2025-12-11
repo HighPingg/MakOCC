@@ -1,8 +1,13 @@
 /**
- * MOCC Locking Data Structure Implementation
+ * MOCC Lock Manager Implementation with Wait-Die Deadlock Prevention
+ * 
+ * Wait-Die Protocol:
+ * - Older transaction (lower timestamp) WAITS for younger holder
+ * - Younger transaction (higher timestamp) DIES (aborts) if blocked by older holder
  */
 
 #include "mocc_lock.h"
+#include <algorithm>
 
 namespace janus {
 
@@ -10,153 +15,248 @@ namespace janus {
 // RecordLock Implementation
 // ============================================================================
 
-RecordLock::RecordLock() = default;
+RecordLock::RecordLock() {}
 
 bool RecordLock::CanGrant(LockMode mode, txnid_t txn_id) const {
-  if (mode == LockMode::SHARED) {
-    // Shared lock can be granted if:
-    // - No exclusive holder, OR
-    // - We already hold the exclusive lock (upgrade scenario)
-    return exclusive_holder_ == 0 || exclusive_holder_ == txn_id;
-  } else if (mode == LockMode::EXCLUSIVE) {
-    // Exclusive lock can be granted if:
-    // - No one holds any lock, OR
-    // - We are the only holder (upgrade from shared)
-    if (exclusive_holder_ != 0) {
-      return exclusive_holder_ == txn_id;
-    }
-    if (shared_holders_.empty()) {
-      return true;
-    }
-    // Check if we're the only shared holder (upgrade case)
-    return shared_holders_.size() == 1 && 
-           shared_holders_.find(txn_id) != shared_holders_.end();
+  if (holders_.empty()) {
+    return true;  // No holders, can grant
   }
-  return false;
+  
+  // Check if this transaction already holds a compatible lock
+  for (const auto& holder : holders_) {
+    if (holder.txn_id == txn_id) {
+      // Already hold a lock - check compatibility
+      if (holder.mode == LockMode::EXCLUSIVE) {
+        return true;  // Already have exclusive
+      }
+      if (mode == LockMode::SHARED) {
+        return true;  // Already have shared, requesting shared
+      }
+      // Have shared, requesting exclusive - upgrade needed
+      // Can upgrade only if we're the only holder
+      return holders_.size() == 1;
+    }
+  }
+  
+  // Check compatibility with existing holders
+  if (mode == LockMode::SHARED) {
+    // Shared can be granted if no exclusive holders
+    for (const auto& holder : holders_) {
+      if (holder.mode == LockMode::EXCLUSIVE) {
+        return false;
+      }
+    }
+    return true;
+  } else {
+    // Exclusive can only be granted if no holders
+    return false;
+  }
 }
 
-LockStatus RecordLock::Acquire(txnid_t txn_id, LockMode mode, bool blocking) {
+bool RecordLock::ShouldWait(const LogicalTimestamp& requester_ts) const {
+  // Wait-Die: Older (smaller timestamp) waits, younger dies
+  // Returns true if requester should wait (is older than all holders)
+  // Returns false if requester should abort (is younger than any holder)
+  
+  for (const auto& holder : holders_) {
+    if (requester_ts > holder.timestamp) {
+      // Requester is younger than this holder - must abort (die)
+      return false;
+    }
+  }
+  // Requester is older than all holders - can wait
+  return true;
+}
+
+LogicalTimestamp RecordLock::FindOldestHolder() const {
+  if (holders_.empty()) {
+    return LogicalTimestamp();
+  }
+  
+  LogicalTimestamp oldest = holders_[0].timestamp;
+  for (const auto& holder : holders_) {
+    if (holder.timestamp < oldest) {
+      oldest = holder.timestamp;
+    }
+  }
+  return oldest;
+}
+
+LockStatus RecordLock::Acquire(txnid_t txn_id, LogicalTimestamp timestamp,
+                                LockMode mode, bool blocking) {
   std::unique_lock<std::mutex> lock(mutex_);
   
-  // Check if we already hold a compatible lock
-  if (mode == LockMode::SHARED && shared_holders_.count(txn_id)) {
-    return LockStatus::ACQUIRED;  // Already have shared
-  }
-  if (mode == LockMode::EXCLUSIVE && exclusive_holder_ == txn_id) {
-    return LockStatus::ACQUIRED;  // Already have exclusive
-  }
-  
-  // Try to acquire immediately
+  // Check if we can grant immediately
   if (CanGrant(mode, txn_id)) {
-    if (mode == LockMode::SHARED) {
-      shared_holders_.insert(txn_id);
-    } else {
-      // If upgrading from shared, remove from shared holders
-      shared_holders_.erase(txn_id);
-      exclusive_holder_ = txn_id;
+    // Check if upgrading
+    bool found = false;
+    for (auto& holder : holders_) {
+      if (holder.txn_id == txn_id) {
+        holder.mode = mode;  // Upgrade
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      holders_.emplace_back(txn_id, timestamp, mode);
     }
     return LockStatus::ACQUIRED;
   }
   
-  // Cannot acquire immediately
-  if (!blocking) {
+  // Cannot grant immediately - apply Wait-Die
+  if (!ShouldWait(timestamp)) {
+    // Younger transaction - must abort (die)
     return LockStatus::DENIED;
   }
   
-  // Add to wait queue and wait
-  wait_queue_.push(LockRequest(txn_id, mode));
-  
-  cv_.wait(lock, [this, txn_id, mode]() {
-    return CanGrant(mode, txn_id);
-  });
-  
-  // Grant the lock
-  if (mode == LockMode::SHARED) {
-    shared_holders_.insert(txn_id);
-  } else {
-    shared_holders_.erase(txn_id);
-    exclusive_holder_ = txn_id;
+  // Older transaction - can wait
+  if (!blocking) {
+    // Non-blocking mode - return waiting status but don't actually wait
+    return LockStatus::WAITING;
   }
   
-  // Remove from wait queue
-  // Note: This is a simplified implementation
+  // Create waiter and add to wait list
+  auto waiter = std::make_shared<LockWaiter>(txn_id, timestamp, mode);
+  
+  // Insert in timestamp order for fairness
+  auto insert_pos = waiters_.begin();
+  for (auto it = waiters_.begin(); it != waiters_.end(); ++it) {
+    if (timestamp < (*it)->timestamp) {
+      break;
+    }
+    insert_pos = std::next(it);
+  }
+  waiters_.insert(insert_pos, waiter);
+  
+  // Wait for grant or abort signal
+  waiter->cv->wait(lock, [&waiter]() {
+    return waiter->granted.load() || waiter->should_abort.load();
+  });
+  
+  // Remove from wait list
+  waiters_.remove(waiter);
+  
+  if (waiter->should_abort.load()) {
+    return LockStatus::DENIED;
+  }
   
   return LockStatus::ACQUIRED;
 }
 
-bool RecordLock::TryAcquire(txnid_t txn_id, LockMode mode) {
-  return Acquire(txn_id, mode, false) == LockStatus::ACQUIRED;
+LockStatus RecordLock::TryAcquire(txnid_t txn_id, LogicalTimestamp timestamp, LockMode mode) {
+  return Acquire(txn_id, timestamp, mode, false);
 }
 
 bool RecordLock::Release(txnid_t txn_id) {
   std::lock_guard<std::mutex> lock(mutex_);
   
-  bool released = false;
+  // Find and remove from holders
+  auto it = std::find_if(holders_.begin(), holders_.end(),
+                         [txn_id](const LockHolder& h) { return h.txn_id == txn_id; });
   
-  if (exclusive_holder_ == txn_id) {
-    exclusive_holder_ = 0;
-    released = true;
+  if (it == holders_.end()) {
+    return false;  // Not held
   }
   
-  if (shared_holders_.erase(txn_id) > 0) {
-    released = true;
-  }
+  holders_.erase(it);
   
-  if (released) {
-    // Wake up waiters
-    GrantWaiters();
-    cv_.notify_all();
-  }
+  // Try to grant to waiters
+  GrantWaiters();
   
-  return released;
+  return true;
 }
 
 void RecordLock::GrantWaiters() {
-  // Process wait queue - grant as many compatible requests as possible
-  // This is called while holding the mutex
-  
-  if (wait_queue_.empty()) {
-    return;
+  // Process waiters in order (already sorted by timestamp)
+  auto it = waiters_.begin();
+  while (it != waiters_.end()) {
+    auto& waiter = *it;
+    
+    if (CanGrant(waiter->mode, waiter->txn_id)) {
+      // Grant the lock
+      holders_.emplace_back(waiter->txn_id, waiter->timestamp, waiter->mode);
+      waiter->granted.store(true);
+      waiter->cv->notify_one();
+      it = waiters_.erase(it);
+    } else {
+      // Check wait-die for remaining waiters
+      if (!ShouldWait(waiter->timestamp)) {
+        // Waiter is now younger than holder - must abort
+        waiter->should_abort.store(true);
+        waiter->cv->notify_one();
+        it = waiters_.erase(it);
+      } else {
+        ++it;
+      }
+    }
   }
-  
-  // Simple approach: just notify all and let them re-check
-  // More sophisticated: directly grant and update state
 }
 
 bool RecordLock::IsHeldBy(txnid_t txn_id) const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return exclusive_holder_ == txn_id || 
-         shared_holders_.find(txn_id) != shared_holders_.end();
+  
+  for (const auto& holder : holders_) {
+    if (holder.txn_id == txn_id) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool RecordLock::IsExclusivelyHeld() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return exclusive_holder_ != 0;
+  
+  for (const auto& holder : holders_) {
+    if (holder.mode == LockMode::EXCLUSIVE) {
+      return true;
+    }
+  }
+  return false;
 }
 
-txnid_t RecordLock::GetExclusiveHolder() const {
+LogicalTimestamp RecordLock::GetOldestHolderTimestamp() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return exclusive_holder_;
+  return FindOldestHolder();
 }
 
-std::vector<txnid_t> RecordLock::GetSharedHolders() const {
+std::vector<LockHolder> RecordLock::GetHolders() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return std::vector<txnid_t>(shared_holders_.begin(), shared_holders_.end());
+  return holders_;
 }
 
 size_t RecordLock::GetWaiterCount() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return wait_queue_.size();
+  return waiters_.size();
 }
 
 bool RecordLock::IsFree() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  return exclusive_holder_ == 0 && shared_holders_.empty();
+  return holders_.empty();
 }
 
 // ============================================================================
 // MoccLockManager Implementation
 // ============================================================================
+
+void MoccLockManager::RegisterTransaction(txnid_t txn_id, LogicalTimestamp timestamp) {
+  std::lock_guard<std::mutex> lock(txn_mutex_);
+  txn_states_.emplace(txn_id, TransactionLockState(txn_id, timestamp));
+}
+
+void MoccLockManager::UnregisterTransaction(txnid_t txn_id) {
+  std::lock_guard<std::mutex> lock(txn_mutex_);
+  txn_states_.erase(txn_id);
+}
+
+LogicalTimestamp MoccLockManager::GetTransactionTimestamp(txnid_t txn_id) const {
+  std::lock_guard<std::mutex> lock(txn_mutex_);
+  auto it = txn_states_.find(txn_id);
+  if (it != txn_states_.end()) {
+    return it->second.timestamp;
+  }
+  // Return a default timestamp if not registered
+  return LogicalTimestamp();
+}
 
 RecordLock& MoccLockManager::GetOrCreateLock(void* row, int col_id) {
   RowColKey key{row, col_id};
@@ -187,36 +287,42 @@ RecordLock& MoccLockManager::GetOrCreateLock(void* row, int col_id) {
 }
 
 LockStatus MoccLockManager::AcquireLock(txnid_t txn_id, void* row, int col_id,
-                                        LockMode mode, bool force) {
+                                        LockMode mode, bool blocking) {
+  // Get transaction timestamp
+  LogicalTimestamp timestamp = GetTransactionTimestamp(txn_id);
+  if (!timestamp.IsValid()) {
+    // Transaction not registered - use current clock
+    timestamp = LogicalClockManager::Instance().GetTimestamp();
+    RegisterTransaction(txn_id, timestamp);
+  }
+  
   // Check if we should use pessimistic locking
-  if (!force && !ShouldUsePessimisticLock(row, col_id)) {
-    // For cold records, we don't actually acquire locks
-    // Just return ACQUIRED to indicate optimistic path
+  if (!ShouldUsePessimisticLock(row, col_id)) {
+    // Cold record - just return ACQUIRED (use OCC path)
     return LockStatus::ACQUIRED;
   }
   
   RecordLock& lock = GetOrCreateLock(row, col_id);
-  LockStatus status = lock.Acquire(txn_id, mode, true);  // blocking
+  LockStatus status = lock.Acquire(txn_id, timestamp, mode, blocking);
   
   if (status == LockStatus::ACQUIRED) {
     // Track this lock for the transaction
-    std::lock_guard<std::mutex> guard(txn_locks_mutex_);
-    txn_held_locks_[txn_id].push_back(RowColKey{row, col_id});
+    std::lock_guard<std::mutex> guard(txn_mutex_);
+    auto it = txn_states_.find(txn_id);
+    if (it != txn_states_.end()) {
+      LockInfo info(row, col_id, mode, timestamp);
+      // Insert in sorted order for canonical mode
+      auto& locks = it->second.held_locks;
+      auto pos = std::lower_bound(locks.begin(), locks.end(), info);
+      locks.insert(pos, info);
+    }
   }
   
   return status;
 }
 
-bool MoccLockManager::TryAcquireLock(txnid_t txn_id, void* row, int col_id, LockMode mode) {
-  RecordLock& lock = GetOrCreateLock(row, col_id);
-  bool acquired = lock.TryAcquire(txn_id, mode);
-  
-  if (acquired) {
-    std::lock_guard<std::mutex> guard(txn_locks_mutex_);
-    txn_held_locks_[txn_id].push_back(RowColKey{row, col_id});
-  }
-  
-  return acquired;
+LockStatus MoccLockManager::TryAcquireLock(txnid_t txn_id, void* row, int col_id, LockMode mode) {
+  return AcquireLock(txn_id, row, col_id, mode, false);
 }
 
 bool MoccLockManager::ReleaseLock(txnid_t txn_id, void* row, int col_id) {
@@ -231,18 +337,16 @@ bool MoccLockManager::ReleaseLock(txnid_t txn_id, void* row, int col_id) {
   bool released = it->second->Release(txn_id);
   
   if (released) {
-    // Remove from tracking
-    std::lock_guard<std::mutex> guard(txn_locks_mutex_);
-    auto txn_it = txn_held_locks_.find(txn_id);
-    if (txn_it != txn_held_locks_.end()) {
-      auto& locks_vec = txn_it->second;
-      locks_vec.erase(
-        std::remove(locks_vec.begin(), locks_vec.end(), key),
-        locks_vec.end()
-      );
-      if (locks_vec.empty()) {
-        txn_held_locks_.erase(txn_it);
-      }
+    // Remove from transaction's held locks
+    std::lock_guard<std::mutex> guard(txn_mutex_);
+    auto tx_it = txn_states_.find(txn_id);
+    if (tx_it != txn_states_.end()) {
+      auto& locks = tx_it->second.held_locks;
+      locks.erase(std::remove_if(locks.begin(), locks.end(),
+                                 [row, col_id](const LockInfo& l) {
+                                   return l.row == row && l.col_id == col_id;
+                                 }),
+                  locks.end());
     }
   }
   
@@ -250,21 +354,23 @@ bool MoccLockManager::ReleaseLock(txnid_t txn_id, void* row, int col_id) {
 }
 
 void MoccLockManager::ReleaseAllLocks(txnid_t txn_id) {
-  std::vector<RowColKey> locks_to_release;
+  std::vector<RowColKey> to_release;
   
-  // Get list of locks held by this transaction
+  // Get all locks held by this transaction
   {
-    std::lock_guard<std::mutex> guard(txn_locks_mutex_);
-    auto it = txn_held_locks_.find(txn_id);
-    if (it != txn_held_locks_.end()) {
-      locks_to_release = it->second;
-      txn_held_locks_.erase(it);
+    std::lock_guard<std::mutex> guard(txn_mutex_);
+    auto it = txn_states_.find(txn_id);
+    if (it != txn_states_.end()) {
+      for (const auto& lock_info : it->second.held_locks) {
+        to_release.push_back(RowColKey{lock_info.row, lock_info.col_id});
+      }
+      it->second.held_locks.clear();
     }
   }
   
   // Release each lock
   std::shared_lock<std::shared_mutex> lock(mutex_);
-  for (const auto& key : locks_to_release) {
+  for (const auto& key : to_release) {
     auto it = locks_.find(key);
     if (it != locks_.end()) {
       it->second->Release(txn_id);
@@ -280,6 +386,7 @@ bool MoccLockManager::HoldsLock(txnid_t txn_id, void* row, int col_id) const {
   if (it == locks_.end()) {
     return false;
   }
+  
   return it->second->IsHeldBy(txn_id);
 }
 
@@ -289,69 +396,33 @@ bool MoccLockManager::ShouldUsePessimisticLock(void* row, int col_id) const {
 }
 
 std::vector<LockInfo> MoccLockManager::GetHeldLocks(txnid_t txn_id) const {
-  std::vector<LockInfo> result;
-  
-  std::lock_guard<std::mutex> guard(txn_locks_mutex_);
-  auto it = txn_held_locks_.find(txn_id);
-  if (it != txn_held_locks_.end()) {
-    std::shared_lock<std::shared_mutex> lock(mutex_);
-    for (const auto& key : it->second) {
-      auto lock_it = locks_.find(key);
-      if (lock_it != locks_.end()) {
-        LockMode mode = lock_it->second->IsExclusivelyHeld() ? 
-                        LockMode::EXCLUSIVE : LockMode::SHARED;
-        result.emplace_back(key.row_ptr, key.col_id, mode);
-      }
-    }
+  std::lock_guard<std::mutex> guard(txn_mutex_);
+  auto it = txn_states_.find(txn_id);
+  if (it != txn_states_.end()) {
+    return it->second.held_locks;  // Already sorted
   }
-  
-  return result;
-}
-
-std::vector<LockInfo> MoccLockManager::GetRequiredLocks(
-    const std::vector<std::pair<void*, int>>& records, bool write) const {
-  std::vector<LockInfo> result;
-  LockMode mode = write ? LockMode::EXCLUSIVE : LockMode::SHARED;
-  
-  for (const auto& rec : records) {
-    result.emplace_back(rec.first, rec.second, mode);
-  }
-  
-  return result;
+  return {};
 }
 
 bool MoccLockManager::PreAcquireLocks(txnid_t txn_id, const std::vector<LockInfo>& locks) {
-  // Sort locks to prevent deadlock (by pointer address)
+  // Sort locks to prevent deadlock (already should be sorted, but ensure)
   std::vector<LockInfo> sorted_locks = locks;
-  std::sort(sorted_locks.begin(), sorted_locks.end(),
-            [](const LockInfo& a, const LockInfo& b) {
-              if (a.row != b.row) return a.row < b.row;
-              return a.col_id < b.col_id;
-            });
+  std::sort(sorted_locks.begin(), sorted_locks.end());
   
-  // Try to acquire all locks
   std::vector<RowColKey> acquired;
   
   for (const auto& lock_info : sorted_locks) {
-    RecordLock& lock = GetOrCreateLock(lock_info.row, lock_info.col_id);
-    if (!lock.TryAcquire(txn_id, lock_info.mode)) {
+    LockStatus status = AcquireLock(txn_id, lock_info.row, lock_info.col_id, 
+                                    lock_info.mode, true);  // blocking
+    
+    if (status != LockStatus::ACQUIRED) {
       // Failed to acquire - rollback all acquired locks
       for (const auto& key : acquired) {
-        auto it = locks_.find(key);
-        if (it != locks_.end()) {
-          it->second->Release(txn_id);
-        }
+        ReleaseLock(txn_id, key.row, key.col_id);
       }
       return false;
     }
     acquired.push_back(RowColKey{lock_info.row, lock_info.col_id});
-  }
-  
-  // All locks acquired successfully - track them
-  {
-    std::lock_guard<std::mutex> guard(txn_locks_mutex_);
-    auto& txn_locks = txn_held_locks_[txn_id];
-    txn_locks.insert(txn_locks.end(), acquired.begin(), acquired.end());
   }
   
   return true;
@@ -359,14 +430,14 @@ bool MoccLockManager::PreAcquireLocks(txnid_t txn_id, const std::vector<LockInfo
 
 void MoccLockManager::Clear() {
   std::unique_lock<std::shared_mutex> lock(mutex_);
-  std::lock_guard<std::mutex> guard(txn_locks_mutex_);
+  std::lock_guard<std::mutex> guard(txn_mutex_);
   
   locks_.clear();
-  txn_held_locks_.clear();
+  txn_states_.clear();
 }
 
 MoccLockManager::Stats MoccLockManager::GetStats() const {
-  Stats stats{0, 0, 0};
+  Stats stats{0, 0, 0, 0};
   
   std::shared_lock<std::shared_mutex> lock(mutex_);
   stats.total_locks = locks_.size();
@@ -378,11 +449,10 @@ MoccLockManager::Stats MoccLockManager::GetStats() const {
     stats.waiting_requests += pair.second->GetWaiterCount();
   }
   
+  std::lock_guard<std::mutex> guard(txn_mutex_);
+  stats.registered_txns = txn_states_.size();
+  
   return stats;
 }
 
 } // namespace janus
-
-
-
-

@@ -4,25 +4,26 @@
  * MOCC Scheduler
  * 
  * The MOCC scheduler extends the OCC scheduler with:
- * - Temperature-aware validation
- * - Lock communication on abort
- * - Support for pre-locked retry transactions
+ * - Temperature-aware DoPrepare: hot vs cold record handling
+ * - SHARED locks for hot READS (prevent clobbered reads)
+ * - EXCLUSIVE locks for hot WRITES
+ * - OCC validation for cold records only
+ * - ALWAYS release all locks on commit/abort
  */
 
 #include "../occ/scheduler.h"
 #include "temperature.h"
 #include "mocc_lock.h"
+#include "logical_clock.h"
 
 namespace janus {
 
 /**
  * PrepareResult extends the basic success/fail with lock information
- * for distributed abort handling
  */
 struct MoccPrepareResult {
   bool success;
-  std::vector<LockInfo> required_locks;  // Locks needed for retry
-  std::vector<LockInfo> held_locks;      // Locks currently held
+  std::vector<LockInfo> conflicting_records;  // Records that caused conflicts
   
   MoccPrepareResult() : success(false) {}
   explicit MoccPrepareResult(bool s) : success(s) {}
@@ -30,6 +31,22 @@ struct MoccPrepareResult {
 
 /**
  * SchedulerMocc extends SchedulerOcc with MOCC-specific functionality
+ * 
+ * Key implementation (MOCC paper Algorithm 1, commit() function):
+ * 
+ * DoPrepare for MOCC:
+ * 1. Acquire SHARED locks for hot records in read set
+ * 2. Acquire EXCLUSIVE locks for hot records in write set
+ * 3. OCC validation (version check) for cold records
+ * 4. OCC lock acquisition for cold records
+ * 
+ * DoCommit:
+ * - Apply writes
+ * - Release ALL locks (both MOCC and OCC)
+ * 
+ * HandleAbort:
+ * - Update temperature for ALL accessed records
+ * - Release ALL locks (both MOCC and OCC)
  */
 class SchedulerMocc : public SchedulerOcc {
 public:
@@ -37,50 +54,41 @@ public:
   virtual ~SchedulerMocc() = default;
   
   /**
-   * Override to use MOCC transaction manager
+   * Override to use MOCC transaction
    */
   virtual mdb::Txn* get_mdb_txn(const i64 tid) override;
   
   /**
    * Override DoPrepare for MOCC validation
    * 
-   * MOCC validation differs from OCC in that:
-   * 1. It tracks which records caused conflicts
-   * 2. On failure, it returns the locks needed for retry
-   * 3. It updates temperature based on abort/commit
+   * MOCC validation:
+   * 1. For hot records: already have locks from execution phase
+   * 2. For cold records: OCC version check + lock acquisition
+   * 3. On failure: update temperature and release all locks
    */
   virtual bool DoPrepare(txnid_t tx_id) override;
   
   /**
-   * MOCC-specific prepare that returns lock information
+   * MOCC-specific prepare with detailed result
    */
-  MoccPrepareResult DoPrepareWithLockInfo(txnid_t tx_id);
+  MoccPrepareResult DoPrepareWithResult(txnid_t tx_id);
   
   /**
-   * Override DoCommit to update temperature on success
+   * Override DoCommit to release all MOCC locks
+   * MUST release all locks!
    */
   virtual void DoCommit(Tx& tx) override;
   
   /**
-   * Override DoAbort to update temperature on failure
+   * DoAbort: update temperature and release all locks
+   * MUST release all locks!
    */
   void DoAbort(Tx& tx);
   
   /**
-   * Pre-acquire locks for a transaction (for retry with locks)
-   * Called before dispatching pieces for a retry transaction
-   * 
-   * @param tx_id Transaction ID
-   * @param locks Locks to acquire
-   * @return true if all locks acquired successfully
+   * Handle abort with temperature update
    */
-  bool PreAcquireLocksForTransaction(txnid_t tx_id, 
-                                     const std::vector<LockInfo>& locks);
-  
-  /**
-   * Get the locks held by a transaction
-   */
-  std::vector<LockInfo> GetHeldLocks(txnid_t tx_id) const;
+  void HandleAbort(txnid_t tx_id);
   
   /**
    * Release all locks for a transaction
@@ -88,9 +96,9 @@ public:
   void ReleaseLocks(txnid_t tx_id);
   
   /**
-   * Check if a transaction is considered "hot"
+   * Check if a record is hot
    */
-  bool IsHotTransaction(txnid_t tx_id) const;
+  bool IsHot(void* row, int col_id = -1) const;
   
   /**
    * Apply temperature decay (should be called periodically)
@@ -106,22 +114,40 @@ public:
    * Get lock statistics for monitoring
    */
   MoccLockManager::Stats GetLockStats() const;
+  
+  /**
+   * Initialize transaction with timestamp
+   */
+  void InitializeTransaction(txnid_t tx_id, LogicalTimestamp timestamp);
 
 protected:
   /**
-   * Collect conflict information during validation failure
+   * Acquire locks for hot records in read set
+   * @return true if all locks acquired, false if should abort
    */
-  std::vector<LockInfo> CollectConflictInfo(txnid_t tx_id);
+  bool AcquireReadLocksForHotRecords(txnid_t tx_id, mdb::TxnOCC* txn);
   
   /**
-   * Determine required locks based on the transaction's access pattern
-   * and current temperature
+   * Acquire locks for hot records in write set
+   * @return true if all locks acquired, false if should abort
    */
-  std::vector<LockInfo> DetermineRequiredLocks(txnid_t tx_id);
+  bool AcquireWriteLocksForHotRecords(txnid_t tx_id, mdb::TxnOCC* txn);
+  
+  /**
+   * Perform OCC validation for cold records
+   * @return true if validation passed, false if should abort
+   */
+  bool ValidateColdRecords(txnid_t tx_id, mdb::TxnOCC* txn);
+  
+  /**
+   * Release all OCC locks (row locks in TxnOCC)
+   */
+  void ReleaseOccLocks(mdb::TxnOCC* txn);
+  
+  /**
+   * Update temperature on abort for all accessed records
+   */
+  void UpdateTemperatureOnAbort(txnid_t tx_id);
 };
 
 } // namespace janus
-
-
-
-

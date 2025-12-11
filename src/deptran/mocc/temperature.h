@@ -3,34 +3,36 @@
 /**
  * MOCC Temperature Tracking System
  * 
- * This module implements the temperature tracking mechanism for MOCC
- * (Mixed Optimistic/Pessimistic Concurrency Control).
+ * This module implements the temperature tracking mechanism from the MOCC paper
+ * (Wang & Kimura, VLDB 2016).
  * 
- * Temperature represents the "hotness" of a record - how frequently it's
- * accessed and causes conflicts. Hot records (high temperature) benefit
- * from pessimistic locking, while cold records use optimistic concurrency.
+ * Key Features (per MOCC paper Section 3.2):
+ * - Temperature tracked at PAGE granularity (not per-record) to reduce overhead
+ * - Uses APPROXIMATE COUNTERS: increment with probability 2^(-temp)
+ * - Temperature ONLY increases on ABORT (verification failure)
+ * - Periodic decay to adapt to workload changes
  * 
- * Reference: "MOCC: Optimistic Concurrency Control Based on Monitoring
- * for Main Memory Databases" (ICDE 2016)
+ * Temperature represents the "hotness" of a record - how frequently it causes
+ * conflicts. Hot records (high temperature) benefit from pessimistic locking,
+ * while cold records use optimistic concurrency.
  */
 
 #include "../__dep__.h"
 #include <atomic>
 #include <unordered_map>
 #include <shared_mutex>
+#include <random>
+#include <chrono>
 
 namespace janus {
 
-// Temperature thresholds for switching between OCC and pessimistic locking
-constexpr uint32_t MOCC_COLD_THRESHOLD = 3;      // Below this = cold (use OCC)
+// Temperature thresholds (MOCC paper recommends H=5-10, default 10)
 constexpr uint32_t MOCC_HOT_THRESHOLD = 10;      // Above this = hot (use locks)
+constexpr uint32_t MOCC_WARM_THRESHOLD = 5;      // Above this = warm
 constexpr uint32_t MOCC_MAX_TEMPERATURE = 20;    // Temperature cap
 
 // Temperature decay interval (in milliseconds)
-constexpr uint64_t MOCC_DECAY_INTERVAL_MS = 100;
-
-// Temperature decay factor (temperature *= DECAY_FACTOR each interval)
-constexpr double MOCC_DECAY_FACTOR = 0.9;
+constexpr uint64_t MOCC_DECAY_INTERVAL_MS = 1000;  // Reset periodically
 
 /**
  * TemperatureLevel indicates how a record should be accessed
@@ -42,50 +44,51 @@ enum class TemperatureLevel {
 };
 
 /**
- * RecordTemperature tracks temperature for a single record/row
+ * PageTemperature tracks temperature for a single page
+ * Uses approximate counter as per MOCC paper Algorithm 2
  */
-struct RecordTemperature {
+struct PageTemperature {
   std::atomic<uint32_t> temperature{0};
-  std::atomic<uint32_t> abort_count{0};
-  std::atomic<uint64_t> last_access_time{0};
-  std::atomic<uint64_t> last_decay_time{0};
+  std::atomic<uint64_t> last_reset_time{0};
   
-  RecordTemperature() = default;
+  PageTemperature() = default;
   
   // Disable copy
-  RecordTemperature(const RecordTemperature&) = delete;
-  RecordTemperature& operator=(const RecordTemperature&) = delete;
+  PageTemperature(const PageTemperature&) = delete;
+  PageTemperature& operator=(const PageTemperature&) = delete;
   
   // Allow move
-  RecordTemperature(RecordTemperature&& other) noexcept
+  PageTemperature(PageTemperature&& other) noexcept
     : temperature(other.temperature.load()),
-      abort_count(other.abort_count.load()),
-      last_access_time(other.last_access_time.load()),
-      last_decay_time(other.last_decay_time.load()) {}
+      last_reset_time(other.last_reset_time.load()) {}
 };
 
 /**
- * Row-Column pair for identifying specific cells in the database
+ * Page key for identifying pages (using row pointer's page address)
+ * MOCC tracks temperature at page granularity
  */
-struct RowColKey {
-  void* row_ptr;
-  int col_id;
+struct PageKey {
+  void* page_ptr;  // Page address (derived from row pointer)
   
-  bool operator==(const RowColKey& other) const {
-    return row_ptr == other.row_ptr && col_id == other.col_id;
+  bool operator==(const PageKey& other) const {
+    return page_ptr == other.page_ptr;
   }
 };
 
-struct RowColKeyHash {
-  size_t operator()(const RowColKey& key) const {
-    return std::hash<void*>()(key.row_ptr) ^ 
-           (std::hash<int>()(key.col_id) << 1);
+struct PageKeyHash {
+  size_t operator()(const PageKey& key) const {
+    return std::hash<void*>()(key.page_ptr);
   }
 };
 
 /**
- * TemperatureTracker is a singleton that manages temperature for all records
+ * TemperatureTracker is a singleton that manages temperature for all pages
  * across the system. It provides thread-safe access to temperature data.
+ * 
+ * Implements MOCC paper Section 3.2:
+ * - Approximate counters to reduce cacheline invalidation
+ * - Temperature only increased on abort
+ * - Periodic reset for workload adaptation
  */
 class TemperatureTracker {
 public:
@@ -95,48 +98,60 @@ public:
   }
   
   /**
-   * Get the temperature level for a specific row/column
+   * Get the temperature level for a specific row
+   * Looks up temperature at page granularity
+   * 
    * @param row Pointer to the row
-   * @param col_id Column ID (-1 for entire row)
+   * @param col_id Column ID (ignored - we track at page level)
    * @return TemperatureLevel indicating how to access the record
    */
   TemperatureLevel GetLevel(void* row, int col_id = -1);
   
   /**
-   * Get raw temperature value for a record
+   * Get raw temperature value for a page containing the row
    */
   uint32_t GetTemperature(void* row, int col_id = -1);
   
   /**
-   * Increment temperature when a record is accessed
+   * Record an abort on this record (increases temperature)
+   * This is the PRIMARY way temperature increases in MOCC.
+   * 
+   * Uses approximate counter: increment with probability 2^(-temp)
+   * This prevents hot pages from causing cacheline ping-pong.
+   * 
    * @param row Pointer to the row
-   * @param col_id Column ID (-1 for entire row)
-   * @param increment Amount to increase (default 1)
-   */
-  void IncrementTemperature(void* row, int col_id = -1, uint32_t increment = 1);
-  
-  /**
-   * Record an abort on this record (increases temperature more)
-   * @param row Pointer to the row
-   * @param col_id Column ID (-1 for entire row)
+   * @param col_id Column ID (ignored - we track at page level)
    */
   void RecordAbort(void* row, int col_id = -1);
   
   /**
-   * Record a successful commit (slightly decreases temperature)
+   * Record a successful commit
+   * In MOCC, commits do NOT decrease temperature.
+   * Temperature only decreases via periodic reset.
+   * This method is kept for API compatibility but does minimal work.
+   * 
    * @param row Pointer to the row
-   * @param col_id Column ID (-1 for entire row)
+   * @param col_id Column ID (ignored)
    */
   void RecordCommit(void* row, int col_id = -1);
   
   /**
-   * Apply temperature decay to all records
-   * Should be called periodically
+   * Increment temperature (internal use)
+   * NOTE: In MOCC, temperature should only increase on abort.
+   * This method is kept for backward compatibility but should
+   * generally not be called directly.
+   */
+  void IncrementTemperature(void* row, int col_id = -1, uint32_t increment = 1);
+  
+  /**
+   * Apply temperature reset/decay
+   * MOCC periodically resets temperatures to adapt to workload changes.
+   * Should be called periodically (e.g., every MOCC_DECAY_INTERVAL_MS).
    */
   void ApplyDecay();
   
   /**
-   * Reset temperature for a specific record
+   * Reset temperature for a specific page
    */
   void ResetTemperature(void* row, int col_id = -1);
   
@@ -149,35 +164,50 @@ public:
    * Get statistics for debugging/monitoring
    */
   struct Stats {
-    size_t total_records;
-    size_t hot_records;
-    size_t warm_records;
-    size_t cold_records;
+    size_t total_records;  // Total pages tracked
+    size_t hot_records;    // Hot pages
+    size_t warm_records;   // Warm pages
+    size_t cold_records;   // Cold pages
     uint64_t total_temperature;
   };
   Stats GetStats();
 
 private:
-  TemperatureTracker() = default;
+  TemperatureTracker();
   ~TemperatureTracker() = default;
   
   // Disable copy/move
   TemperatureTracker(const TemperatureTracker&) = delete;
   TemperatureTracker& operator=(const TemperatureTracker&) = delete;
   
-  // Get or create temperature entry for a record
-  RecordTemperature& GetOrCreate(void* row, int col_id);
+  /**
+   * Get page address from row pointer
+   * Assumes standard page size alignment (4KB)
+   */
+  void* GetPageAddress(void* row) const;
   
-  // Apply decay to a single record
-  void ApplyDecayToRecord(RecordTemperature& temp);
+  // Get or create temperature entry for a page
+  PageTemperature& GetOrCreate(void* page_addr);
   
-  // Storage for temperature data
-  // Using shared_mutex for read-heavy workloads
+  /**
+   * Approximate counter increment (MOCC Algorithm 2)
+   * Returns true if we should increment, based on probability 2^(-temp)
+   */
+  bool ShouldIncrement(uint32_t current_temp);
+  
+  // Storage for temperature data (per page)
   mutable std::shared_mutex mutex_;
-  std::unordered_map<RowColKey, std::unique_ptr<RecordTemperature>, RowColKeyHash> temperatures_;
+  std::unordered_map<PageKey, std::unique_ptr<PageTemperature>, PageKeyHash> temperatures_;
   
   // Timestamp for decay
-  std::atomic<uint64_t> last_global_decay_time_{0};
+  std::atomic<uint64_t> last_global_reset_time_{0};
+  
+  // Random number generator for approximate counter
+  thread_local static std::mt19937 rng_;
+  thread_local static std::uniform_real_distribution<double> dist_;
+  
+  // Page size for alignment (4KB default)
+  static constexpr size_t PAGE_SIZE = 4096;
 };
 
 /**
@@ -190,7 +220,3 @@ inline uint64_t GetCurrentTimeMs() {
 }
 
 } // namespace janus
-
-
-
-

@@ -3,33 +3,32 @@
 /**
  * MOCC Coordinator
  * 
- * The MOCC coordinator extends the classic coordinator with:
- * - Hot transaction detection
- * - Lock communication on abort
- * - Pre-acquisition of locks before retry
- * - Broadcasting lock requirements to all shards
+ * The MOCC coordinator extends the classic 2PC coordinator with:
+ * - Logical timestamp assignment for wait-die
+ * - NO RETRY (user requirement: aborts are final)
+ * - Temperature-aware transaction execution
+ * - Lock cleanup on abort
+ * 
+ * Key differences from MOCC paper:
+ * - No RLL (Retrospective Lock List) since we don't retry
+ * - Abort is always final - just clean up and report failure
  */
 
 #include "../classic/coordinator.h"
 #include "mocc_lock.h"
 #include "temperature.h"
+#include "logical_clock.h"
 
 namespace janus {
 
 /**
- * MoccRetryInfo contains information for retrying a transaction
- */
-struct MoccRetryInfo {
-  std::vector<LockInfo> required_locks;  // Locks to pre-acquire
-  std::map<parid_t, std::vector<LockInfo>> locks_by_shard;  // Locks per shard
-  bool is_hot_transaction;
-  int retry_count;
-  
-  MoccRetryInfo() : is_hot_transaction(false), retry_count(0) {}
-};
-
-/**
  * CoordinatorMocc extends CoordinatorClassic with MOCC-specific functionality
+ * 
+ * Transaction Flow:
+ * 1. GotTxData: Assign logical timestamp
+ * 2. DispatchAsync: Send with timestamp
+ * 3. DoPrepare: Hot/cold validation
+ * 4. DoCommit/DoAbort: Clean up locks
  */
 class CoordinatorMocc : public CoordinatorClassic {
 public:
@@ -50,35 +49,35 @@ public:
   virtual void Reset() override;
   
   /**
-   * Restart a transaction with MOCC lock pre-acquisition
+   * Called when transaction data is received
+   * Assigns logical timestamp here
+   */
+  virtual void GotTxData();
+  
+  /**
+   * Restart - DISABLED for MOCC (no retries per user requirement)
+   * Always aborts instead of retrying
    */
   void Restart() override;
   
   /**
-   * Dispatch with MOCC awareness
+   * Dispatch with MOCC timestamp
    */
   virtual void DispatchAsync() override;
   
   /**
-   * Handle dispatch acknowledgment with lock info
+   * Commit - must release all locks
    */
-  void DispatchAckMocc(phase_t phase, int res, TxnOutput& outputs,
-                       const std::vector<LockInfo>& held_locks);
-  
-  /**
-   * Prepare phase with MOCC lock collection
-   */
-  void PrepareMocc();
-  
-  /**
-   * Handle prepare acknowledgment with lock requirements
-   */
-  void PrepareAckMocc(phase_t phase, int res, 
-                      const std::vector<LockInfo>& required_locks);
+  virtual void Commit() override;
   
   // ============================================================================
   // MOCC-specific methods
   // ============================================================================
+  
+  /**
+   * Get transaction's logical timestamp
+   */
+  const LogicalTimestamp& GetTimestamp() const { return txn_timestamp_; }
   
   /**
    * Check if current transaction is considered "hot"
@@ -86,62 +85,37 @@ public:
   bool IsHotTransaction() const;
   
   /**
-   * Collect all locks needed from failed prepare responses
-   */
-  void CollectRequiredLocks(const std::vector<LockInfo>& locks, parid_t shard);
-  
-  /**
-   * Broadcast lock requirements to all affected shards
-   * Called before retry to pre-acquire locks
-   */
-  bool BroadcastLockRequirements();
-  
-  /**
-   * Pre-acquire locks on all shards before dispatch
-   */
-  bool PreAcquireLocksOnShards();
-  
-  /**
-   * Get the retry information for the current transaction
-   */
-  const MoccRetryInfo& GetRetryInfo() const { return retry_info_; }
-  
-  /**
-   * Mark that we received abort with lock info
-   */
-  void SetAbortWithLockInfo(bool has_lock_info);
-  
-  /**
    * Get temperature statistics from coordinator perspective
    */
   std::string GetTemperatureReport() const;
+  
+  /**
+   * Generate MOCC logical timestamp (using coordinator ID)
+   */
+  LogicalTimestamp GenerateMoccTimestamp();
 
 protected:
-  // MOCC retry information
-  MoccRetryInfo retry_info_;
+  // Transaction's logical timestamp for wait-die
+  LogicalTimestamp txn_timestamp_;
   
-  // Track whether abort had lock information
-  bool abort_has_lock_info_{false};
+  // Logical clock for this coordinator
+  LogicalClock clock_;
   
-  // Track locks held per shard
-  std::map<parid_t, std::vector<LockInfo>> shard_held_locks_;
+  // Track if transaction touched hot records
+  bool touched_hot_records_{false};
   
   // Count of hot record accesses
   int hot_access_count_{0};
   
   /**
-   * Aggregate lock requirements from multiple shards
+   * Handle abort without retry (user requirement)
    */
-  void AggregateLockRequirements();
+  void HandleFinalAbort();
   
   /**
-   * Determine if we should use pessimistic locking for retry
+   * Clean up locks on all shards
    */
-  bool ShouldUseLocksForRetry() const;
+  void CleanupLocks();
 };
 
 } // namespace janus
-
-
-
-
