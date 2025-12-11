@@ -32,7 +32,7 @@ using namespace janus;
 constexpr int WARMUP_ITERATIONS = 1000;
 constexpr int BENCHMARK_ITERATIONS = 100000;
 constexpr int NUM_RECORDS = 1000;
-constexpr int NUM_THREADS = 4;
+constexpr int NUM_THREADS = 12;
 constexpr int CONTENTION_HOT_RECORDS = 10;  // Number of hot records for contention
 
 // Color codes
@@ -457,6 +457,214 @@ BenchmarkResult benchmark_hybrid_decision() {
 }
 
 // ============================================================================
+// Benchmark 6: TPC-C NewOrder Simulation
+// ============================================================================
+
+// TPC-C Constants
+constexpr int TPCC_NUM_WAREHOUSES = 100; // Default, can be overridden
+constexpr int TPCC_DISTRICTS_PER_W = 10;
+constexpr int TPCC_CUSTOMERS_PER_D = 3000;
+constexpr int TPCC_ITEMS = 100000;
+
+class TpccKeyGenerator {
+public:
+    // Base addresses for different tables to ensure no overlap
+    static constexpr uintptr_t BASE_WAREHOUSE = 0x100000000;
+    static constexpr uintptr_t BASE_DISTRICT  = 0x200000000;
+    static constexpr uintptr_t BASE_CUSTOMER  = 0x300000000;
+    static constexpr uintptr_t BASE_ITEM      = 0x400000000;
+    static constexpr uintptr_t BASE_STOCK     = 0x500000000;
+
+    static void* GetWarehouseKey(int w_id) {
+        return reinterpret_cast<void*>(BASE_WAREHOUSE + w_id * 64);
+    }
+
+    static void* GetDistrictKey(int w_id, int d_id) {
+        return reinterpret_cast<void*>(BASE_DISTRICT + (w_id * TPCC_DISTRICTS_PER_W + d_id) * 64);
+    }
+
+    static void* GetCustomerKey(int w_id, int d_id, int c_id) {
+        // Simplified mapping for customer, might overlap if not careful but sufficient for benchmark
+        uint64_t idx = (uint64_t)w_id * TPCC_DISTRICTS_PER_W * TPCC_CUSTOMERS_PER_D + 
+                       (uint64_t)d_id * TPCC_CUSTOMERS_PER_D + c_id;
+        return reinterpret_cast<void*>(BASE_CUSTOMER + idx * 64);
+    }
+
+    static void* GetItemKey(int i_id) {
+        return reinterpret_cast<void*>(BASE_ITEM + i_id * 64);
+    }
+
+    static void* GetStockKey(int w_id, int i_id) {
+        uint64_t idx = (uint64_t)w_id * TPCC_ITEMS + i_id;
+        return reinterpret_cast<void*>(BASE_STOCK + idx * 64);
+    }
+};
+
+atomic<size_t> tpcc_ops_completed{0};
+atomic<size_t> tpcc_aborts{0};
+
+void tpcc_worker(int thread_id, int num_warehouses, int iterations) {
+    random_device rd;
+    mt19937 gen(rd());
+    
+    // TPC-C NewOrder parameters
+    uniform_int_distribution<> w_dist(0, num_warehouses - 1);
+    uniform_int_distribution<> d_dist(0, TPCC_DISTRICTS_PER_W - 1);
+    uniform_int_distribution<> c_dist(0, TPCC_CUSTOMERS_PER_D - 1);
+    uniform_int_distribution<> i_dist(0, TPCC_ITEMS - 1);
+    uniform_int_distribution<> ol_cnt_dist(5, 15);
+    uniform_int_distribution<> remote_dist(0, 99); // 1% remote
+    
+    txnid_t base_txn = 2000000 + thread_id * 1000000;
+    
+    for (int i = 0; i < iterations; i++) {
+        txnid_t txn = base_txn + i;
+        bool aborted = false;
+        vector<void*> acquired_locks;
+        
+        // 1. Warehouse and District
+        int w_id = thread_id % num_warehouses; // Home warehouse
+        int d_id = d_dist(gen);
+        int c_id = c_dist(gen);
+        
+        void* w_key = TpccKeyGenerator::GetWarehouseKey(w_id);
+        void* d_key = TpccKeyGenerator::GetDistrictKey(w_id, d_id);
+        void* c_key = TpccKeyGenerator::GetCustomerKey(w_id, d_id, c_id);
+        
+        // Acquire locks (simulated)
+        // In real TPC-C, W is read, D is read/write, C is read
+        
+        // Warehouse (Read)
+        TemperatureTracker::Instance().GetLevel(w_key, 0); // Check temperature
+        if (MoccLockManager::Instance().TryAcquireLock(txn, w_key, 0, LockMode::SHARED) != LockStatus::ACQUIRED) {
+            aborted = true;
+            TemperatureTracker::Instance().RecordAbort(w_key, 0);
+        } else {
+            acquired_locks.push_back(w_key);
+            
+            // District (Read/Write - update next_o_id)
+            TemperatureTracker::Instance().GetLevel(d_key, 0); // Check temperature
+            if (MoccLockManager::Instance().TryAcquireLock(txn, d_key, 0, LockMode::EXCLUSIVE) != LockStatus::ACQUIRED) {
+                aborted = true;
+                TemperatureTracker::Instance().RecordAbort(d_key, 0);
+            } else {
+                acquired_locks.push_back(d_key);
+                
+                // Customer (Read)
+                TemperatureTracker::Instance().GetLevel(c_key, 0); // Check temperature
+                if (MoccLockManager::Instance().TryAcquireLock(txn, c_key, 0, LockMode::SHARED) != LockStatus::ACQUIRED) {
+                    aborted = true;
+                    TemperatureTracker::Instance().RecordAbort(c_key, 0);
+                } else {
+                    acquired_locks.push_back(c_key);
+                    
+                    // Order lines
+                    int ol_cnt = ol_cnt_dist(gen);
+                    for (int j = 0; j < ol_cnt; j++) {
+                        int i_id = i_dist(gen);
+                        int supply_w_id = w_id;
+                        
+                        // 1% remote transaction
+                        if (remote_dist(gen) == 0 && num_warehouses > 1) {
+                            do {
+                                supply_w_id = w_dist(gen);
+                            } while (supply_w_id == w_id);
+                        }
+                        
+                        void* i_key = TpccKeyGenerator::GetItemKey(i_id);
+                        void* s_key = TpccKeyGenerator::GetStockKey(supply_w_id, i_id);
+                        
+                        // Item (Read)
+                        TemperatureTracker::Instance().GetLevel(i_key, 0); // Check temperature
+                        if (MoccLockManager::Instance().TryAcquireLock(txn, i_key, 0, LockMode::SHARED) != LockStatus::ACQUIRED) {
+                            aborted = true;
+                            TemperatureTracker::Instance().RecordAbort(i_key, 0);
+                            break;
+                        }
+                        acquired_locks.push_back(i_key);
+                        
+                        // Stock (Read/Write)
+                        TemperatureTracker::Instance().GetLevel(s_key, 0); // Check temperature
+                        if (MoccLockManager::Instance().TryAcquireLock(txn, s_key, 0, LockMode::EXCLUSIVE) != LockStatus::ACQUIRED) {
+                            aborted = true;
+                            TemperatureTracker::Instance().RecordAbort(s_key, 0);
+                            break;
+                        }
+                        acquired_locks.push_back(s_key);
+                    }
+                }
+            }
+        }
+        
+        if (aborted) {
+            // Abort: release all locks and record abort
+            for (void* lock : acquired_locks) {
+                MoccLockManager::Instance().ReleaseLock(txn, lock, 0);
+            }
+            // Record abort on the last failed key (simplified, we don't know exactly which one failed here easily without refactoring)
+            // For now just count aborts
+            tpcc_aborts++;
+        } else {
+            // Simulate CPU throttle (work) inside the critical section to increase contention
+            // 100000 iterations to ensure noticeable delay
+            volatile int x = 0;
+            for (int k = 0; k < 100000; k++) {
+                x++;
+            }
+            
+            // Commit: release all locks
+            for (void* lock : acquired_locks) {
+                MoccLockManager::Instance().ReleaseLock(txn, lock, 0);
+            }
+            tpcc_ops_completed++;
+        }
+    }
+}
+
+BenchmarkResult benchmark_tpcc_new_order() {
+    MoccLockManager::Instance().Clear();
+    TemperatureTracker::Instance().Clear();
+    tpcc_ops_completed = 0;
+    tpcc_aborts = 0;
+    
+    int num_warehouses = TPCC_NUM_WAREHOUSES; // Scale warehouses with threads
+    int iterations_per_thread = BENCHMARK_ITERATIONS / NUM_THREADS;
+    
+    cout << "    Running TPC-C NewOrder with " << num_warehouses << " warehouses..." << endl;
+    
+    BenchTimer timer;
+    timer.start();
+    
+    vector<thread> threads;
+    for (int t = 0; t < NUM_THREADS; t++) {
+        threads.emplace_back(tpcc_worker, t, num_warehouses, iterations_per_thread);
+    }
+    
+    for (auto& t : threads) {
+        t.join();
+    }
+    
+    double elapsed_ns = timer.elapsed_ns();
+    size_t total = tpcc_ops_completed.load();
+    size_t aborts = tpcc_aborts.load();
+    
+    BenchmarkResult result;
+    result.name = "TPC-C NewOrder Simulation";
+    result.total_ops = total;
+    result.duration_ms = elapsed_ns / 1e6;
+    result.ops_per_sec = (total / elapsed_ns) * 1e9;
+    result.avg_latency_ns = elapsed_ns / (total + aborts);
+    result.p50_latency_ns = 0;
+    result.p99_latency_ns = 0;
+    
+    cout << "    Aborts: " << aborts << " (" 
+         << fixed << setprecision(1) << (100.0 * aborts / (total + aborts)) 
+         << "%)" << endl;
+    
+    return result;
+}
+
+// ============================================================================
 // Main
 // ============================================================================
 
@@ -514,6 +722,13 @@ int main() {
     cout << YELLOW << "=== Hybrid Decision Benchmarks ===" << RESET << endl;
     print_separator();
     results.push_back(benchmark_hybrid_decision());
+    print_result(results.back());
+    cout << endl;
+
+    // TPC-C Benchmarks
+    cout << YELLOW << "=== TPC-C Benchmarks ===" << RESET << endl;
+    print_separator();
+    results.push_back(benchmark_tpcc_new_order());
     print_result(results.back());
     cout << endl;
     

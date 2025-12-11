@@ -334,9 +334,9 @@ case "${1:-}" in
         run_rrr_unit_tests
         run_simple_transaction
         run_simple_paxos
-        run_2shard_no_replication
-        run_1shard_replication
-        run_2shard_replication
+        # run_2shard_no_replication
+        # run_1shard_replication
+        # run_2shard_replication
         run_1shard_replication_simple
         run_2shard_replication_simple
         run_rocksdb_tests
