@@ -1,0 +1,11 @@
+
+mode:
+  cc: occ # concurrency control
+  ab: multi_paxos # atomic broadcast
+  read_only: occ
+  batch: false
+  retry: 20
+  ongoing: 1 # per client
+
+# High contention: small scale factor to force conflicts
+# scale_factor is set to 1 in shard config (1 warehouse per thread)

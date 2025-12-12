@@ -12,6 +12,7 @@
 #include "rcc/dep_graph.h"
 #include "rcc/graph_marshaler.h"
 #include "workload.h"
+#include "../mako/mocc_integration.h"  // MOCC integration
 
 // for tpca benchmark
 #include "bench/tpca/workload.h"
@@ -472,6 +473,10 @@ void Config::InitMode(string &cc_name, string& ab_name) {
   } else if ((cc_name == "2pl_ww") || (cc_name == "2pl_wound_die")) {
     mdb::FineLockedRow::set_wound_wait();
     n_parallel_dispatch_ = 1;
+  } else if (cc_name == "mocc") {
+    // Enable MOCC temperature tracking integration for Mako
+    mocc_integration::EnableMocc();
+    Log_info("MOCC mode enabled - temperature tracking active");
   }
 
   replica_proto_ = Frame::Name2Mode(ab_name);

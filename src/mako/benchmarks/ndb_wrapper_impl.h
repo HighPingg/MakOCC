@@ -13,6 +13,7 @@
 //#include "../txn_proto1_impl.h"
 #include "../txn_proto2_impl.h"
 #include "../tuple.h"
+#include "../mocc_integration.h"  // MOCC integration
 
 struct hint_default_traits : public default_transaction_traits {
   typedef str_arena StringAllocator;
@@ -203,6 +204,11 @@ ndb_wrapper<Transaction>::commit_txn(void *txn)
     { \
       auto t = cast< b >()(p); \
       const bool ret = t->commit(); \
+      if (ret) { \
+        mocc_integration::OnCommit(); /* MOCC: record successful commit */ \
+      } else { \
+        mocc_integration::OnAbort(); /* MOCC: commit failed = abort */ \
+      } \
       Destroy(t); \
       return ret; \
     }
@@ -220,6 +226,7 @@ void
 ndb_wrapper<Transaction>::abort_txn(void *txn)
 {
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
+  mocc_integration::OnAbort();  // MOCC: record abort and update temperatures
 #define MY_OP_X(a, b) \
   case a: \
     { \
@@ -332,6 +339,7 @@ ndb_ordered_index<Transaction>::get(
   PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe1_name.c_str(), &private_::ndb_get_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
+  mocc_integration::RecordAccess(key.data());  // MOCC: track record access
   try {
 #define MY_OP_X(a, b) \
   case a: \
@@ -366,6 +374,7 @@ ndb_ordered_index<Transaction>::put(
   PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe1_name.c_str(), &private_::ndb_put_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
+  mocc_integration::RecordAccess(key.data());  // MOCC: track record access
   try {
 #define MY_OP_X(a, b) \
   case a: \
@@ -424,6 +433,7 @@ ndb_ordered_index<Transaction>::insert(
   PERF_DECL(static std::string probe1_name(std::string(__PRETTY_FUNCTION__) + std::string(":total:")));
   ANON_REGION(probe1_name.c_str(), &private_::ndb_insert_probe0_cg);
   ndbtxn * const p = reinterpret_cast<ndbtxn *>(txn);
+  mocc_integration::RecordAccess(key.data());  // MOCC: track record access
   try {
 #define MY_OP_X(a, b) \
   case a: \

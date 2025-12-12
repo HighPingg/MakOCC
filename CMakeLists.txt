@@ -479,6 +479,7 @@ set(MAKO_SRCFILES
   "${CMAKE_CURRENT_SOURCE_DIR}/src/mako/lib/shardClient.cc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/mako/lib/server.cc"
   "${CMAKE_CURRENT_SOURCE_DIR}/src/mako/benchmarks/abstract_db.cc"
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/mako/mocc_integration.cc"
 )
 
 # Benchmark flags
@@ -592,6 +593,7 @@ list(FILTER DEPTRAN_SRC EXCLUDE REGEX "src/bench/paxos_lib/.*")
 # Build libtxlog as a shared library
 add_library(txlog SHARED
     src/deptran/paxos_main_helper.cc
+    src/mako/mocc_integration.cc
     ${DEPTRAN_SRC}
     ${RRR_SRC}
     ${MEMDB_SRC}
@@ -735,6 +737,7 @@ add_apps(test_partitioned_queues examples/test_partitioned_queues.cc)
 add_apps(test_stress_partitioned_queues examples/test_stress_partitioned_queues.cc)
 # add_apps(test_mocc examples/test_mocc.cc)
 add_apps(moccBenchmark examples/moccBenchmark.cc)
+# add_apps(benchmark_occ_vs_mocc examples/benchmark_occ_vs_mocc.cc)
 
 # Enable borrow checking for dbtest
 set(ENABLE_BORROW_CHECKING ON CACHE BOOL "Enable borrow checking" FORCE)
