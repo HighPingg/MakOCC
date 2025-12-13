@@ -82,7 +82,7 @@ echo "╚═══════════════════════�
 echo ""
 
 # Generate shard config for this benchmark
-SHARD_CONFIG="src/mako/config/local-shards1-warehouses${THREADS}.yml"
+SHARD_CONFIG="src/mako/config/local-shards1-warehouses${WAREHOUSES}.yml"
 
 # Function to run benchmark and extract metrics
 run_benchmark() {

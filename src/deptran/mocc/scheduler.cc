@@ -20,6 +20,7 @@ namespace janus {
 
 SchedulerMocc::SchedulerMocc() : SchedulerOcc() {
   // SchedulerOcc already sets up mdb_txn_mgr_ as TxnMgrOCC
+  Log_info("MOCC_DEBUG: SchedulerMocc constructor called - MOCC is active!");
 }
 
 mdb::Txn* SchedulerMocc::get_mdb_txn(const i64 tid) {
@@ -37,6 +38,11 @@ void SchedulerMocc::InitializeTransaction(txnid_t tx_id, LogicalTimestamp timest
 }
 
 bool SchedulerMocc::DoPrepare(txnid_t tx_id) {
+  static std::atomic<uint64_t> prepare_count{0};
+  uint64_t count = prepare_count.fetch_add(1, std::memory_order_relaxed);
+  if (count < 10 || count % 10000 == 0) {
+    Log_info("MOCC_DEBUG: DoPrepare called, tx_id: %" PRIx64 ", total: %lu", tx_id, count);
+  }
   MoccPrepareResult result = DoPrepareWithResult(tx_id);
   return result.success;
 }

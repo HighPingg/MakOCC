@@ -36,6 +36,7 @@
 #include "lib/common.h"
 #include "lib/server.h"
 #include "lib/rust_wrapper.h"
+#include "mocc_integration.h"
 
 
 // Initialize Rust wrapper: communicate with rust-based redis client
@@ -756,8 +757,38 @@ static char** prepare_paxos_args(const vector<string>& paxos_config_file,
   return argv_paxos;
 }
 
-static void init_env() {
+/**
+ * Check paxos config files for MOCC mode and enable it if found.
+ * This ensures MOCC is enabled even in non-replicated mode where
+ * Config::CreateConfig is not called.
+ */
+static void check_and_enable_mocc() {
   auto& benchConfig = BenchmarkConfig::getInstance();
+  const auto& config_files = benchConfig.getPaxosConfigFile();
+  
+  for (const auto& file : config_files) {
+    std::ifstream ifs(file);
+    if (!ifs.is_open()) continue;
+    
+    std::string line;
+    while (std::getline(ifs, line)) {
+      // Look for "cc: mocc" or "cc:mocc" in the config file
+      if (line.find("cc:") != std::string::npos && 
+          line.find("mocc") != std::string::npos) {
+        mocc_integration::EnableMocc();
+        Notice("MOCC mode enabled from config file: %s", file.c_str());
+        return;
+      }
+    }
+  }
+}
+
+static void init_env() {
+
+  auto& benchConfig = BenchmarkConfig::getInstance();
+
+  // Check if MOCC mode is enabled in config files
+  check_and_enable_mocc();
 
   // Setup callbacks
   setup_sync_util_callbacks();
