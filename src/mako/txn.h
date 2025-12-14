@@ -83,7 +83,8 @@ public:
     x(ABORT_REASON_WRITE_NODE_INTERFERENCE) \
     x(ABORT_REASON_INSERT_NODE_INTERFERENCE) \
     x(ABORT_REASON_READ_NODE_INTEREFERENCE) \
-    x(ABORT_REASON_READ_ABSENCE_INTEREFERENCE)
+    x(ABORT_REASON_READ_ABSENCE_INTEREFERENCE) \
+    x(ABORT_REASON_WAIT_DIE_ABORT)
 
   enum abort_reason {
 #define ENUM_X(x) x,
@@ -108,7 +109,8 @@ public:
   transaction_base(uint64_t flags)
     : state(TXN_EMBRYO),
       reason(ABORT_REASON_NONE),
-      flags(flags) {}
+      flags(flags),
+      ordering_timestamp_(0) {}
 
   transaction_base(const transaction_base &) = delete;
   transaction_base(transaction_base &&) = delete;
@@ -344,6 +346,16 @@ protected:
   txn_state state;
   abort_reason reason;
   const uint64_t flags;
+
+  // MOCC: Lamport clock timestamp for Wait-Die ordering
+  uint64_t ordering_timestamp_;
+
+  // MOCC: Retrospective Lock List - tuples to lock pessimistically on retry
+  std::vector<const dbtuple*> rll_;
+
+  // MOCC: Thread-local storage for preserving state across retries
+  static thread_local uint64_t tl_next_ordering_timestamp;
+  static thread_local std::vector<const dbtuple*> tl_next_rll;
 };
 
 
@@ -810,8 +822,10 @@ protected:
 
 class transaction_abort_exception : public std::exception {
 public:
-  transaction_abort_exception(transaction_base::abort_reason r)
-    : r(r) {}
+  transaction_abort_exception(transaction_base::abort_reason r,
+                              uint64_t ordering_ts = 0,
+                              std::vector<const dbtuple*> rll = {})
+    : r(r), ordering_timestamp(ordering_ts), rll(std::move(rll)) {}
   inline transaction_base::abort_reason
   get_reason() const
   {
@@ -822,6 +836,11 @@ public:
   {
     return transaction_base::AbortReasonStr(r);
   }
+
+  // MOCC: Preserved state for retry
+  uint64_t ordering_timestamp;
+  std::vector<const dbtuple*> rll;
+
 private:
   transaction_base::abort_reason r;
 };

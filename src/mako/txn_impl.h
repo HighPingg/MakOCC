@@ -3,6 +3,7 @@
 
 #include "txn.h"
 #include "lockguard.h"
+#include "lamport_clock.h"
 
 // base definitions
 
@@ -14,6 +15,20 @@ transaction<Protocol, Traits>::transaction(uint64_t flags, string_allocator_type
 #ifdef BTREE_LOCK_OWNERSHIP_CHECKING
   concurrent_btree::NodeLockRegionBegin();
 #endif
+
+  // MOCC: Initialize ordering timestamp from thread-local (for retries) or Lamport clock
+  if (transaction_base::tl_next_ordering_timestamp) {
+    this->ordering_timestamp_ = transaction_base::tl_next_ordering_timestamp;
+    transaction_base::tl_next_ordering_timestamp = 0; // Consume it
+  } else {
+    this->ordering_timestamp_ = LamportClock::get_timestamp();
+  }
+
+  // MOCC: Load RLL from thread-local (for retries)
+  if (!transaction_base::tl_next_rll.empty()) {
+    this->rll_ = std::move(transaction_base::tl_next_rll);
+    transaction_base::tl_next_rll.clear();
+  }
 }
 
 template <template <typename> class Protocol, typename Traits>
@@ -215,7 +230,15 @@ transaction<Protocol, Traits>::handle_last_tuple_in_group(
       // again in sorted order
       return false; // signal abort
     }
-    const dbtuple::version_t v = tuple->lock(true); // lock for write
+    // MOCC: Use Wait-Die protocol for locking
+    if (!tuple->try_lock_wait_die(true, this->ordering_timestamp_)) {
+      // Wait-Die: this transaction is younger, must abort
+      // Heat up the tuple to encourage pessimistic locking on retry
+      tuple->heat_up();
+      this->reason = ABORT_REASON_WAIT_DIE_ABORT;
+      return false; // signal abort
+    }
+    const dbtuple::version_t v = tuple->unstable_version();
     INVARIANT(dbtuple::IsLatest(v) == tuple->is_latest());
     last.mark_locked();
     if (unlikely(!dbtuple::IsLatest(v) ||

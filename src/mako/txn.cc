@@ -65,3 +65,7 @@ event_counter transaction_base::g_evt_dbtuple_write_insert_failed
 event_counter transaction_base::evt_local_search_lookups("local_search_lookups");
 event_counter transaction_base::evt_local_search_write_set_hits("local_search_write_set_hits");
 event_counter transaction_base::evt_dbtuple_latest_replacement("dbtuple_latest_replacement");
+
+// MOCC: Thread-local storage for preserving state across transaction retries
+thread_local uint64_t transaction_base::tl_next_ordering_timestamp = 0;
+thread_local std::vector<const dbtuple*> transaction_base::tl_next_rll;
