@@ -57,7 +57,14 @@ Each record tracks contention via a temperature counter:
 Build and run benchmark:
 ```bash
 make -j12
-./examples/benchmark_mako.sh --threads 4 --duration 10
+# Run all integration tests
+./ci/ci.sh all
+
+# Run specific tests
+./ci/ci.sh simpleTransaction    # Simple transactions
+./ci/ci.sh simplePaxos           # Paxos replication
+./ci/ci.sh shard1Replication     # 1-shard with replication
+./ci/ci.sh shard2Replication     # 2-shards with replication
 ```
 
 ## Future Work
