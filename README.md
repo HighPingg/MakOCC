@@ -67,6 +67,18 @@ make -j12
 ./ci/ci.sh shard2Replication     # 2-shards with replication
 ```
 
+## View Results
+
+Extract metrics from test log files:
+```bash
+# Replace LOG_FILE with your log file, e.g.: test_1shard_replication.sh_shard0-localhost-6.log
+
+grep "agg_abort_rate:" $LOG_FILE      # Abort rate (aborts/sec)
+grep "agg_throughput:" $LOG_FILE      # Throughput (ops/sec)
+grep "n_commits:" $LOG_FILE           # Total commits
+grep "avg_latency:" $LOG_FILE         # Average latency (ms)
+```
+
 ## Future Work
 
 - [ ] RLL for write-set records (currently read-set only)
