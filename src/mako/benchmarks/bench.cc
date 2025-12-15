@@ -267,7 +267,7 @@ bench_worker::run()
           backoff_shifts >>= 1;
         } else {
           ++ntxn_aborts;
-          if (false && benchConfig.getRetryAbortedTransaction() && benchConfig.isRunning()) { // don't retry
+          if (benchConfig.getRetryAbortedTransaction() && benchConfig.isRunning()) { // don't retry
             if (benchConfig.getBackoffAbortedTransaction()) {
               if (backoff_shifts < 63)
                 backoff_shifts++;

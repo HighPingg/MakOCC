@@ -76,11 +76,20 @@ Frame* Frame::GetFrame(int mode) {
     case MODE_MDCC:
     case MODE_2PL:
     case MODE_OCC:
+    {
+      ofstream MyFile("occ.txt");
+      MyFile << "Files can be tricky, but it is fun enough!";
+      MyFile.close();
       frame = new Frame(mode);
       break;
-    case MODE_MOCC:
+    }
+    case MODE_MOCC:{
+      ofstream MyFile("mocc.txt");
+      MyFile << "Files can be tricky, but it is fun enough!";
+      MyFile.close();
       frame = new FrameMocc();
       break;
+    }
     case MODE_EXTERNC:
       frame = new ExternCFrame();
       break;
