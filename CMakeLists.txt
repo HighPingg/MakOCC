@@ -733,8 +733,6 @@ add_apps(test_callback_demo examples/test_callback_demo.cc)
 add_apps(test_ordered_callbacks examples/test_ordered_callbacks.cc)
 add_apps(test_partitioned_queues examples/test_partitioned_queues.cc)
 add_apps(test_stress_partitioned_queues examples/test_stress_partitioned_queues.cc)
-add_apps(test_mocc examples/test_mocc.cc)
-add_apps(benchmark_occ_vs_mocc examples/benchmark_occ_vs_mocc.cc)
 
 # Enable borrow checking for dbtest
 set(ENABLE_BORROW_CHECKING ON CACHE BOOL "Enable borrow checking" FORCE)
@@ -958,8 +956,6 @@ if(BUILD_TESTS)
     # Integration tests from CI
     add_test(NAME simpleTransaction COMMAND simpleTransaction)
     
-    # MOCC unit tests
-    add_test(NAME test_mocc COMMAND test_mocc)
 
     # simplePaxos requires config generation and running a shell script that launches multiple processes
     add_test(NAME simplePaxos
