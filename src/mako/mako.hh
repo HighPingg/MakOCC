@@ -37,6 +37,8 @@
 #include "lib/server.h"
 #include "lib/rust_wrapper.h"
 
+#include "lamport_clock.h"
+
 
 // Initialize Rust wrapper: communicate with rust-based redis client
 static void initialize_rust_wrapper()
@@ -201,6 +203,9 @@ static abstract_db* initWithDB() {
                                benchConfig.getLeaderConfig()==1, /* is leader */
                                benchConfig.getCluster(),
                                benchConfig.getConfig());
+
+  // MOCC: Initialize Lamport clock with shard ID for globally unique timestamps
+  LamportClock::init(static_cast<uint16_t>(benchConfig.getShardIndex()));
 
   abstract_db *db = new mbta_wrapper; // on the leader replica
   db->init() ;

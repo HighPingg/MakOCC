@@ -143,6 +143,14 @@ public:
                  // GC is capable of reaping it at certain (well defined)
                  // points, and will not bother to set it to null
 
+  // MOCC: Temperature tracking for selective pessimistic locking
+  // Higher temperature = more contention = use pessimistic locking
+  static constexpr uint8_t TEMPERATURE_THRESHOLD = 128;
+  std::atomic<uint8_t> temperature;
+
+  // MOCC: Lock holder timestamp for Wait-Die protocol
+  std::atomic<uint64_t> lock_holder_timestamp;
+
 #ifdef TUPLE_CHECK_KEY
   // for debugging
   std::string key;
@@ -190,6 +198,8 @@ private:
       , size(CheckBounds(size))
       , alloc_size(CheckBounds(alloc_size))
       , next(nullptr)
+      , temperature(0)
+      , lock_holder_timestamp(0)
 #ifdef TUPLE_CHECK_KEY
       , key()
       , tree(nullptr)
@@ -402,8 +412,88 @@ public:
     lock_owner = std::thread::id();
     INVARIANT(!is_lock_owner());
 #endif
+    // MOCC: Clear lock holder timestamp on unlock
+    lock_holder_timestamp.store(0, std::memory_order_release);
     COMPILER_MEMORY_FENCE;
     hdr = v;
+  }
+
+  // ==================== MOCC Temperature Methods ====================
+
+  /**
+   * Increase temperature when a conflict is detected on this tuple.
+   * Called when a transaction aborts due to conflict on this record.
+   */
+  inline void heat_up() {
+    uint8_t old_temp = temperature.load(std::memory_order_relaxed);
+    if (old_temp < 255) {
+      temperature.store(old_temp + 1, std::memory_order_relaxed);
+    }
+  }
+
+  /**
+   * Decrease temperature on successful transaction completion.
+   * Called when a transaction successfully commits after accessing this record.
+   */
+  inline void cool_down() {
+    uint8_t old_temp = temperature.load(std::memory_order_relaxed);
+    if (old_temp > 0) {
+      temperature.store(old_temp - 1, std::memory_order_relaxed);
+    }
+  }
+
+  /**
+   * Check if this record is "hot" (high contention).
+   * Hot records should be locked pessimistically during read phase.
+   */
+  inline bool is_hot() const {
+    return temperature.load(std::memory_order_relaxed) >= TEMPERATURE_THRESHOLD;
+  }
+
+  // ==================== MOCC Wait-Die Locking ====================
+
+  /**
+   * Attempt to acquire lock using Wait-Die protocol.
+   * 
+   * @param write_intent Whether this is a write lock
+   * @param requester_timestamp Lamport timestamp of requesting transaction
+   * @return true if lock acquired, false if transaction should abort (Wait-Die: younger must die)
+   */
+  inline bool try_lock_wait_die(bool write_intent, uint64_t requester_timestamp) {
+    CheckMagic();
+    version_t v = hdr;
+    const version_t lockmask = write_intent ?
+      (HDR_LOCKED_MASK | HDR_WRITE_INTENT_MASK) : (HDR_LOCKED_MASK);
+
+    constexpr int MAX_SPINS = 1000;
+    int spins = 0;
+
+    while (spins++ < MAX_SPINS) {
+      if (!IsLocked(v)) {
+        // Lock is free, try to acquire
+        if (__sync_bool_compare_and_swap(&hdr, v, v | lockmask)) {
+          lock_holder_timestamp.store(requester_timestamp, std::memory_order_release);
+#ifdef TUPLE_LOCK_OWNERSHIP_CHECKING
+          lock_owner = std::this_thread::get_id();
+          AddTupleToLockRegion(this);
+          INVARIANT(is_lock_owner());
+#endif
+          return true; // Lock acquired
+        }
+      } else {
+        // Lock is held - apply Wait-Die protocol
+        uint64_t holder_ts = lock_holder_timestamp.load(std::memory_order_acquire);
+        if (holder_ts != 0 && requester_timestamp >= holder_ts) {
+          // Wait-Die: requester is younger or same age as holder, must abort
+          return false;
+        }
+        // Requester is older than holder, allowed to wait
+      }
+      nop_pause();
+      v = hdr;
+    }
+    // Timeout - treat as abort to avoid livelock
+    return false;
   }
 
   inline bool
